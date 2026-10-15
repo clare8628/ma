@@ -48,6 +48,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="TQQQ 槓桿輪換策略 (LRS)")
     parser.add_argument("--qqq-csv", default=None, help="離線模式：QQQ 歷史資料 CSV (date,close)")
     parser.add_argument("--tqqq-csv", default=None, help="離線模式：TQQQ 歷史資料 CSV (date,close)")
+    parser.add_argument("--output", "-o", default=REPORT_PATH, help=f"HTML 圖表報告輸出路徑 (預設: {REPORT_PATH})")
     parser.add_argument("--no-chart", action="store_true", help="不產生 HTML 圖表報告")
     parser.add_argument("--mark-filled", action="store_true", help="標記已依建議進場建倉")
     parser.add_argument("--mark-closed", action="store_true", help="標記已依建議出場清倉")
@@ -92,8 +93,8 @@ def main() -> int:
     print(rb.message)
 
     if not args.no_chart:
-        render_html_report(REPORT_PATH, ind, rec)
-        print(f"\n圖表報告已輸出: {REPORT_PATH}")
+        render_html_report(args.output, ind, rec)
+        print(f"\n圖表報告已輸出: {args.output}")
 
     return 0
 

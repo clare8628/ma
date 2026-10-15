@@ -9,6 +9,7 @@
 - [x] 單元測試 25/25 通過 (unittest, 無需安裝套件)
 - [x] CLI 端對端驗證：離線CSV + 即時Yahoo資料皆通過
 - [x] README / GitHub Actions 排程範例
+- [x] Cloudflare 部署適配：新增 wrangler.jsonc、package.json 與 public/ 靜態資源發布
 
-測試覆蓋率：indicators/rules_engine/signals/rebalance 四大核心模組皆有測試。
-部署狀態：本機可執行；GH Actions workflow 已備妥，需推送至 GitHub 後啟用。
+測試覆蓋率：indicators/rules_engine/signals/rebalance 四大核心模組皆有測試 (28/28 通過)。
+部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。

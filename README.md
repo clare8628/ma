@@ -82,10 +82,16 @@ main.py                  CLI 入口
 
 ## 部署
 
+- **Cloudflare (Workers / Pages)**：
+  - 本專案已配置 `wrangler.jsonc` 與 `package.json`，支援靜態資產託管（Workers Static Assets / Pages）。
+  - Cloudflare 建置設定：
+    - **Build command**: `npm run build`（或 `python3 main.py --output public/index.html`）
+    - **Deploy command**: `npx wrangler deploy`
+    - **Build output directory**: `public`
 - `.github/workflows/daily-signal.yml`：美股收盤後排程執行測試 + 產生每日
   報告，上傳為 workflow artifact（需專案推送至 GitHub 後啟用 Actions）。
 - 無第三方相依套件，亦可用任一具備 Python 3.8+ 的排程環境（cron、Cloud
-  Scheduler、Cloudflare Cron Triggers via subprocess 等）直接執行 `main.py`。
+  Scheduler 等）直接執行 `main.py`。
 
 ## 限制
 
