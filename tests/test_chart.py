@@ -146,6 +146,37 @@ class TestChart(unittest.TestCase):
         self.assertIn('id="plot-log"', svg_html)
         self.assertIn('togglePriceScale', svg_html)
 
+    def test_time_range_selector_and_wide_layout(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = os.path.join(tmpdir, "report.html")
+            render_html_report(out_path, self.ind, self.rec)
+            with open(out_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # 驗證時間區間切換按鈕群
+            self.assertIn('class="range-toolbar"', content)
+            self.assertIn('setChartRange', content)
+            self.assertIn('data-range="1m"', content)
+            self.assertIn('data-range="3m"', content)
+            self.assertIn('data-range="6m"', content)
+            self.assertIn('data-range="1y"', content)
+            self.assertIn('data-range="2y"', content)
+            self.assertIn('data-range="5y"', content)
+            self.assertIn('data-range="10y"', content)
+            self.assertIn('data-range="all"', content)
+            self.assertIn('preset-period-select', content)
+            self.assertIn('range-info-badge', content)
+
+            # 驗證嵌入了完整前端資料 JSON
+            self.assertIn('id="chart-data"', content)
+            self.assertIn('"tqqq_close":', content)
+
+            # 驗證版面寬度充份利用 (擴充至 1760px)
+            self.assertIn('max-width: 1760px', content)
+
+            # 驗證 SVG 畫布寬度拓寬為 1600
+            self.assertIn('viewBox="0 0 1600', content)
+
 
 if __name__ == "__main__":
     unittest.main()

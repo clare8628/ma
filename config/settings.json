@@ -31,7 +31,8 @@
     "asset_site_url": "https://mgtasset.clare8628.workers.dev/"
   },
   "chart": {
-    "window": "all"
+    "window": "1y",
+    "default_range": "1y"
   },
   "data": {
     "history_range": "max",
