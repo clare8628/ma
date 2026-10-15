@@ -7,7 +7,7 @@
     "directory": "./public",
     "binding": "ASSETS"
   },
-  "vars": {
-    "MGTASSET_URL": "https://mgtasset.clare8628.workers.dev"
-  }
+  "services": [
+    { "binding": "MGTASSET", "service": "mgtasset" }
+  ]
 }

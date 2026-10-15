@@ -1,24 +1,18 @@
-// 放進 ma 專案（例如 ma/worker/index.js）的範例 Worker。
-// 瀏覽器呼叫 ma 的 /api/defensive，由此腳本在伺服器端帶 token 轉呼叫 mgtasset，token 不會外露。
+// ma 專案的 Worker。瀏覽器呼叫 ma 的 /api/defensive，由此腳本在伺服器端帶 token 轉呼叫 mgtasset，token 不會外露。
 //
-// ma 專案目前沒有 wrangler.toml（Dashboard 提示 "Update wrangler.jsonc in your repo"，name 為 "ma"）。
-// 請在 ma 專案根目錄新增 wrangler.jsonc（directory 填 ma 實際的建置輸出資料夾，例如 dist 或 public）：
-//   {
-//     "name": "ma",
-//     "main": "worker/index.js",
-//     "compatibility_date": "2026-10-15",
-//     "assets": { "directory": "./dist", "binding": "ASSETS" },
-//     "vars": { "MGTASSET_URL": "https://mgtasset.clare8628.workers.dev" }
-//   }
-// 推送部署後，到 ma 的 Settings 頁最上方「Runtime variables and secrets」新增 Secret：MA_API_TOKEN（與 mgtasset 相同的新值）。
-// 注意：不要放在頁面下方 Builds 區塊的「Variables and secrets」（那是建置時變數）。
+// 原本用 `fetch("https://mgtasset.clare8628.workers.dev/...")` 直接打 workers.dev URL，
+// 但 Cloudflare 會擋掉從 Worker 內部對另一個 workers.dev 網址發出的子請求
+// （邊緣回應 404 + body "error code: 1042"，與 token 是否正確無關）。
+// 改用 Service Binding（wrangler.jsonc 的 services）直接呼叫 mgtasset 這個 Worker，
+// 不經過 workers.dev 的邊緣路由，不會被擋，也不需要 MGTASSET_URL 這個 var。
+// 到 ma 的 Settings →「Runtime variables and secrets」新增 Secret：MA_API_TOKEN（與 mgtasset 相同的值）。
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/defensive' && request.method === 'GET') {
-      const upstream = await fetch(`${env.MGTASSET_URL}/api/ma/defensive`, {
+      const upstream = await env.MGTASSET.fetch('https://mgtasset/api/ma/defensive', {
         headers: { Authorization: `Bearer ${env.MA_API_TOKEN}` },
       });
       // 只轉發 JSON 本體與狀態碼，不轉發其他標頭
