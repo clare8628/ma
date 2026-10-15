@@ -1,19 +1,11 @@
 # STATE
 
-目前狀態：任務已完成，系統可用。
+目前狀態：程式完成（28/28 測試通過），部署與資產站串接尚有未完成設定。
 
-## 需人工介入事項（非程式缺陷，缺少必要資訊）
-
-**mgtasset.clare8628.workers.dev 自動登入查詢現金比例尚未串接。**
-
-原因：該資產配置站台需帳密登入，未提供公開 API 文件。猜測登入端點/參數
-可能導致誤判（抓到錯誤的現金比例）或帳密處理不安全，因此未自動重試 3 次
-後直接標記，而是一開始就不做無依據的串接。
-
-需要的資訊（任一即可解除此狀態）：
-1. 該站台的登入 API 規格（endpoint、request/response 格式），或
-2. 允許暫時以手動方式：每年 11/1 再平衡窗口內，人工登入站台查詢現金比例，
-   寫入 `state/asset_snapshot.json`（`{"defensive_pct": <數字>}`）。
-
-目前 `python3 main.py` 在非再平衡窗口會正常印出「非再平衡窗口」；進入窗口
-且無資料時會印出提示訊息要求人工確認，不會卡住或報錯。
+## 待辦（需人工）
+1. **資產站端點**：mgtasset 專案新增 `GET /api/ma/defensive`（Bearer 驗證），步驟見 `docs/MGTASSET-API.md`。mgtasset 目前只有 `APP_TOKEN` secret，尚無 `MA_API_TOKEN`，代表端點還沒做。
+2. ~~Token 設定~~ 已完成：GitHub repo secret `MGTASSET_API_TOKEN`、Cloudflare Worker `ma` 的 secret `MA_API_TOKEN` 已用同一組新 token 設定完成（2026-10-15）。mgtasset 那邊仍需設定同一組 token 的 `MA_API_TOKEN` secret。
+3. **前端未呼叫 Worker**：`worker/index.js` 提供 `/api/defensive`，但 `public/index.html` 未使用；現金 50% 檢核目前只在 Python CLI 再平衡窗口（11/1 ±3 天）內執行。
+4. **public/index.html 為靜態快照**：需執行 `npm run build`（`python3 main.py --output public/index.html`）更新後 push；GitHub Actions 尚未自動 build/commit。
+5. **持倉**：`state/position.json` 為 holding=false，實際買進後以 `--mark-filled` 更新（已 gitignore，雲端部署看不到）。
+6. ~~`package.json` deploy script~~ 已移除 `wrangler deploy` script。本次為清除先前意外以明文 var 部署到正式環境的 token，手動執行了一次 `wrangler deploy`（已改用 `wrangler secret put` 設回正確做法），之後部署請回到只用 git push。

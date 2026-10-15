@@ -4,7 +4,6 @@
   "private": true,
   "description": "TQQQ Leverage Rotation Strategy (LRS)",
   "scripts": {
-    "build": "python3 main.py --output public/index.html",
-    "deploy": "wrangler deploy"
+    "build": "python3 main.py --output public/index.html"
   }
 }
