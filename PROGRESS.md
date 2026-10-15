@@ -12,5 +12,11 @@
 - [x] README / GitHub Actions 排程範例
 - [x] Cloudflare 部署適配：新增 wrangler.jsonc、package.json 與 public/ 靜態資源發布
 
-測試覆蓋率：indicators/rules_engine/signals/rebalance 四大核心模組皆有測試 (28/28 通過)。
+- [x] MA平台微調加入版本時間戳記（頁首標籤組與頁尾時間戳記，版本 v1.2.0）
+- [x] 圖表右側空間延伸利用：擴充畫布寬度、雙側價格刻度、右側 Price Pills 即時均線/收盤定位標籤與即時指標速覽面板
+- [x] 標記重大金融事件時間點（config/events.json 驅動、圖上垂直標記線與圖釘標籤、可開關切換、時序表紀錄）
+- [x] 「建議動作」與「價格與均線」中間新增目前遵守的「買入與賣出規則」區塊（支援條件翻譯、動作說明與今日符合狀態）
+- [x] 單元測試 33/33 通過 (含 indicators, rules_engine, signals, rebalance, chart 全面覆蓋)
+
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (33/33 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。
