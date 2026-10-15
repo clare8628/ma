@@ -4,6 +4,9 @@ on:
     - cron: "30 21 * * 1-5"  # 05:30 Asia/Taipei, 美股收盤後
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   run-signal:
     runs-on: ubuntu-latest
@@ -20,3 +23,19 @@ jobs:
         with:
           name: lrs-report
           path: state/report.html
+      # 重建 public/index.html（Cloudflare Worker 的靜態資產），
+      # 用當日最新資料覆蓋，並 commit + push，讓網頁頂端日期與股價每日自動更新。
+      - run: python3 main.py --output public/index.html
+        env:
+          MGTASSET_API_TOKEN: ${{ secrets.MGTASSET_API_TOKEN }}
+      - name: Commit updated public/index.html
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- public/index.html; then
+            git add public/index.html
+            git commit -m "chore(report): daily auto-update public/index.html"
+            git push
+          else
+            echo "No changes to public/index.html"
+          fi

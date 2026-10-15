@@ -93,7 +93,7 @@ def main() -> int:
     print(rb.message)
 
     if not args.no_chart:
-        render_html_report(args.output, ind, rec)
+        render_html_report(args.output, ind, rec, settings=settings)
         print(f"\n圖表報告已輸出: {args.output}")
 
     return 0
