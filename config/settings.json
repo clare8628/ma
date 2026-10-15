@@ -1,0 +1,39 @@
+{
+  "benchmark_symbol": "QQQ",
+  "target_symbol": "TQQQ",
+  "defensive_assets": ["CASH", "SHY", "BIL"],
+  "moving_averages": {
+    "benchmark_gate_sma": 200,
+    "target_fast_ema": 10,
+    "target_slow_ema": 20,
+    "chart_long_sma": 200,
+    "chart_short_ema": 20,
+    "extra_mas": [10, 20, 200]
+  },
+  "rsi": {
+    "period": 14,
+    "entry_min": 50,
+    "entry_max": 65,
+    "defensive_exit": 45,
+    "overheat": 70,
+    "midline": 55,
+    "overbought_line": 65
+  },
+  "overheat_extension_pct": 15,
+  "overheat_trim_fraction_min": 0.33,
+  "overheat_trim_fraction_max": 0.5,
+  "defensive_reduce_fraction": 0.5,
+  "rebalance": {
+    "month": 11,
+    "day": 1,
+    "window_days": 3,
+    "defensive_target_pct": 50,
+    "asset_site_url": "https://mgtasset.clare8628.workers.dev/"
+  },
+  "data": {
+    "history_range": "2y",
+    "interval": "1d",
+    "cache_ttl_hours": 12,
+    "cache_dir": "state/cache"
+  }
+}

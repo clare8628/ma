@@ -1,0 +1,78 @@
+{
+  "description": "可編輯的判斷與提醒規則。condition 支援 op: >, <, >=, <=, ==, !=, crosses_above, crosses_below。欄位路徑以 context 字典解析（見 src/lrs/signals.py build_context）。priority 數字越小越優先。新增規則只需在此陣列加入一筆，不需改程式碼。",
+  "rules": [
+    {
+      "id": "R1_bear_lockout",
+      "name": "大盤空頭禁令",
+      "action": "FORCE_EXIT",
+      "priority": 1,
+      "logic": "AND",
+      "conditions": [
+        {"left": "qqq.close", "op": "<", "right": "qqq.sma200"}
+      ],
+      "message": "大盤(QQQ)收盤價 < 200日SMA，強制清倉並持幣觀望，嚴禁任何進場訊號。"
+    },
+    {
+      "id": "R2_death_cross_exit",
+      "name": "標準出場(死亡交叉)",
+      "action": "SELL_ALL",
+      "priority": 2,
+      "logic": "AND",
+      "conditions": [
+        {"left": "tqqq.ema_fast", "op": "crosses_below", "right": "tqqq.ema_slow"}
+      ],
+      "message": "TQQQ 10EMA 向下穿越 20EMA，無條件全數賣出離場。"
+    },
+    {
+      "id": "R3_rsi_defensive_warning",
+      "name": "動能預警(RSI跌破45)",
+      "action": "REDUCE_50",
+      "priority": 3,
+      "logic": "AND",
+      "conditions": [
+        {"left": "position.holding", "op": "==", "right": true},
+        {"left": "tqqq.rsi", "op": "<", "right": 45}
+      ],
+      "message": "持股期間 RSI(14) 跌破 45，買盤動能提前衰退，建議提前減碼50%或移至成本線停損。"
+    },
+    {
+      "id": "R4_overheat_trim",
+      "name": "過熱止盈",
+      "action": "TRIM_PARTIAL",
+      "priority": 4,
+      "logic": "AND",
+      "conditions": [
+        {"left": "tqqq.rsi", "op": ">", "right": 70},
+        {"left": "tqqq.ema_slow_distance_pct", "op": ">", "right": 15}
+      ],
+      "message": "RSI(14) 突破70 且股價高於20EMA超過15%，建議分批賣出1/3至1/2部位。"
+    },
+    {
+      "id": "R5_golden_cross_entry",
+      "name": "進場(黃金交叉+RSI確認)",
+      "action": "BUY",
+      "priority": 5,
+      "logic": "AND",
+      "conditions": [
+        {"left": "qqq.close", "op": ">", "right": "qqq.sma200"},
+        {"left": "tqqq.ema_fast", "op": "crosses_above", "right": "tqqq.ema_slow"},
+        {"left": "tqqq.rsi", "op": ">", "right": 50},
+        {"left": "tqqq.rsi", "op": "<", "right": 65}
+      ],
+      "message": "大盤多頭許可 + TQQQ 10EMA 黃金交叉20EMA + RSI(14)在50~65間，動能確認且未過熱，觸發買進。"
+    },
+    {
+      "id": "R6_entry_rejected_overbought",
+      "name": "進場放棄(RSI過熱)",
+      "action": "SKIP_ENTRY_OVERBOUGHT",
+      "priority": 6,
+      "logic": "AND",
+      "conditions": [
+        {"left": "qqq.close", "op": ">", "right": "qqq.sma200"},
+        {"left": "tqqq.ema_fast", "op": "crosses_above", "right": "tqqq.ema_slow"},
+        {"left": "tqqq.rsi", "op": ">=", "right": 65}
+      ],
+      "message": "黃金交叉當下 RSI(14) 已 >= 65，視為追高，放棄本次進場訊號。"
+    }
+  ]
+}

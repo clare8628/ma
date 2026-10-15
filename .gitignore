@@ -1,0 +1,8 @@
+state/cache/
+state/report.html
+state/position.json
+state/asset_snapshot.json
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

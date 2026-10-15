@@ -1,0 +1,20 @@
+name: LRS Daily Signal
+on:
+  schedule:
+    - cron: "30 21 * * 1-5"  # 05:30 Asia/Taipei, 美股收盤後
+  workflow_dispatch: {}
+
+jobs:
+  run-signal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 -m unittest discover -s tests
+      - run: python3 main.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lrs-report
+          path: state/report.html
