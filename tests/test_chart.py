@@ -123,6 +123,28 @@ class TestChart(unittest.TestCase):
 
             # 3. 驗證包含重大金融事件
             self.assertIn("重大金融事件", content)
+            self.assertIn("全歷史時間軸：", content)
+            self.assertIn("自 TQQQ 成立開始", content)
+
+    def test_inception_events_and_scale_layers(self):
+        events = load_events("config/events.json")
+        # 驗證包含 2010 年 TQQQ 成立重大事件
+        inception_events = [e for e in events if "2010" in e.get("date", "")]
+        self.assertGreater(len(inception_events), 0)
+        self.assertTrue(any("TQQQ" in e.get("title", "") for e in inception_events))
+
+        # 驗證價格圖包含線性與對數座標雙圖層
+        svg_html = _render_price_svg(
+            self.ind,
+            window=20,
+            long_sma_period=200,
+            ema_fast_period=10,
+            ema_slow_period=20,
+            events=events,
+        )
+        self.assertIn('id="plot-linear"', svg_html)
+        self.assertIn('id="plot-log"', svg_html)
+        self.assertIn('togglePriceScale', svg_html)
 
 
 if __name__ == "__main__":

@@ -30,8 +30,11 @@
     "defensive_target_pct": 50,
     "asset_site_url": "https://mgtasset.clare8628.workers.dev/"
   },
+  "chart": {
+    "window": "all"
+  },
   "data": {
-    "history_range": "2y",
+    "history_range": "max",
     "interval": "1d",
     "cache_ttl_hours": 12,
     "cache_dir": "state/cache"

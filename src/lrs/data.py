@@ -52,7 +52,7 @@ def _save_cache(cache_dir: str, symbol: str, payload: dict) -> None:
 
 def fetch_history(
     symbol: str,
-    range_: str = "2y",
+    range_: str = "max",
     interval: str = "1d",
     cache_dir: str = "state/cache",
     cache_ttl_hours: float = 12.0,
@@ -60,10 +60,21 @@ def fetch_history(
     """抓取指定 symbol 的歷史日收盤價，舊到新排序。失敗時回退快取。"""
     cached = _load_cache(cache_dir, symbol)
     now = time.time()
-    if cached and now - cached.get("_fetched_at", 0) < cache_ttl_hours * 3600:
-        return [PriceBar(d, c) for d, c in cached["bars"]]
+    # 若請求全歷史 (max)，但快取資料少於 1500 筆（代表僅有短天期快取），則強制重新抓取全歷史
+    cached_bars = cached.get("bars", []) if cached else []
+    cache_valid = (
+        cached is not None
+        and (now - cached.get("_fetched_at", 0) < cache_ttl_hours * 3600)
+        and (range_ != "max" or len(cached_bars) >= 1500)
+    )
+    if cache_valid:
+        return [PriceBar(d, c) for d, c in cached_bars]
 
-    url = YAHOO_CHART_URL.format(symbol=symbol) + f"?range={range_}&interval={interval}"
+    if range_ == "max":
+        query = f"period1=0&period2=9999999999&interval={interval}"
+    else:
+        query = f"range={range_}&interval={interval}"
+    url = YAHOO_CHART_URL.format(symbol=symbol) + f"?{query}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:

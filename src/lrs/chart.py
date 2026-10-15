@@ -2,30 +2,33 @@
 
 主圖：TQQQ 收盤價 + 長期 SMA(預設200日，框架) + 短期 EMA 10日/20日(觸發)，
       兩條短期 EMA 各自可用圖上開關隱藏，並標示黃金/死亡交叉點及重大金融事件時間點。
+      支援時間軸延長追溯回 TQQQ 2010 年成立開始（全歷史 All-Time）。
+      支援線性座標 (Linear) 與對數座標 (Log Scale) 即時切換，便於長週期觀察。
       右側延伸利用：繪製右側價格刻度、即時價格/均線定位標籤 (Price Pills)。
 副圖：RSI(14)，含 45/50/55/65/70 參考線（避險/進場下緣/中線/超買/過熱）及最新 RSI 指標標籤。
-兩圖皆含縱軸（雙側數值刻度）與橫軸（日期刻度）。
+兩圖皆含縱軸（雙側數值刻度）與橫軸（日期/年份刻度）。
 報告同時整合版本時間戳記、目前遵守之「買入與賣出規則」區塊及重大金融事件時間軸。
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.2.0"
+VERSION = "v1.3.0"
 
 # 擴充寬度以延伸利用右側空間
 WIDTH = 1120
 MARGIN_LEFT = 56
 MARGIN_RIGHT = 140
-MARGIN_TOP = 38
+MARGIN_TOP = 46
 MARGIN_BOTTOM = 40
-PRICE_PLOT_HEIGHT = 420
+PRICE_PLOT_HEIGHT = 440
 RSI_PLOT_HEIGHT = 280
 
 SVG_WIDTH = MARGIN_LEFT + WIDTH + MARGIN_RIGHT  # 56 + 1120 + 140 = 1316
@@ -65,11 +68,13 @@ def _format_price(v: Optional[float]) -> str:
         return "N/A"
     if v >= 100:
         return f"{v:.0f}"
+    if v < 1:
+        return f"{v:.2f}"
     return f"{v:.1f}"
 
 
 def _y_axis(vmin: float, vmax: float, plot_top: float, plot_height: float, fmt=_format_price, ticks: int = 6) -> str:
-    """畫出縱軸刻度線、左右雙側數值標籤與水平格線，充分利用兩側空間。"""
+    """畫出線性縱軸刻度線、左右雙側數值標籤與水平格線，充分利用兩側空間。"""
     span = (vmax - vmin) or 1.0
     parts = []
     for i in range(ticks):
@@ -85,23 +90,81 @@ def _y_axis(vmin: float, vmax: float, plot_top: float, plot_height: float, fmt=_
     return "".join(parts)
 
 
+def _log_y_axis(vmin: float, vmax: float, plot_top: float, plot_height: float) -> Tuple[str, Any]:
+    """計算對數座標刻度與水平格線，適合長達十餘年的高倍數資產展示。"""
+    safe_vmin = max(vmin, 0.05)
+    safe_vmax = max(vmax, safe_vmin * 1.5)
+    log_min = math.log10(safe_vmin)
+    log_max = math.log10(safe_vmax)
+    log_span = (log_max - log_min) or 1.0
+
+    def scale_log(v: Optional[float]) -> Optional[float]:
+        if v is None or v <= 0:
+            return None
+        lv = math.log10(max(v, 0.05))
+        return plot_top + plot_height - (lv - log_min) / log_span * plot_height
+
+    candidates = [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0]
+    ticks = [c for c in candidates if safe_vmin * 0.75 <= c <= safe_vmax * 1.25]
+    if len(ticks) < 4:
+        ticks = [0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]
+
+    parts = []
+    for val in ticks:
+        y = scale_log(val)
+        if y is None or y < plot_top - 5 or y > plot_top + plot_height + 5:
+            continue
+        parts.append(
+            f'<line x1="{MARGIN_LEFT}" y1="{y:.1f}" x2="{MARGIN_LEFT + WIDTH}" y2="{y:.1f}" '
+            f'stroke="#e2e8f0" stroke-width="1" />'
+            f'<text x="{MARGIN_LEFT - 8}" y="{y + 4:.1f}" font-size="11" fill="#475569" text-anchor="end">{_format_price(val)}</text>'
+            f'<text x="{MARGIN_LEFT + WIDTH + 8}" y="{y + 4:.1f}" font-size="11" fill="#94a3b8" text-anchor="start">{_format_price(val)}</text>'
+        )
+    return "".join(parts), scale_log
+
+
 def _x_axis(dates: List[str], xs: List[float], y_bottom: float, tick_count: int = 9) -> str:
-    """畫出橫軸刻度線與日期標籤。"""
+    """畫出橫軸刻度線與日期標籤，針對長年期全歷史與短天期智慧自適應。"""
     n = len(dates)
     if n == 0:
         return ""
-    step = max(1, (n - 1) // (tick_count - 1)) if n > 1 else 1
-    idxs = list(range(0, n, step))
-    if idxs[-1] != n - 1:
-        idxs.append(n - 1)
-    parts = []
-    for i in idxs:
-        x = xs[i]
-        parts.append(
-            f'<line x1="{x:.1f}" y1="{y_bottom}" x2="{x:.1f}" y2="{y_bottom + 5}" stroke="#94a3b8" stroke-width="1" />'
-            f'<text x="{x:.1f}" y="{y_bottom + 18}" font-size="10" fill="#475569" text-anchor="middle">{dates[i]}</text>'
-        )
-    return "".join(parts)
+    if n > 700:
+        # 多年度（自 2010 年 TQQQ 成立以來全歷史）
+        year_indices = []
+        last_year = None
+        for i, d in enumerate(dates):
+            yr = d[:4]
+            if yr != last_year:
+                year_indices.append((i, yr))
+                last_year = yr
+        # 標記年度刻度
+        step_yr = 1 if len(year_indices) <= 18 else 2
+        idxs = [item for idx, item in enumerate(year_indices) if idx % step_yr == 0]
+        if idxs and idxs[-1][0] != n - 1:
+            idxs.append((n - 1, dates[-1]))
+
+        parts = []
+        for i, label in idxs:
+            x = xs[i]
+            parts.append(
+                f'<line x1="{x:.1f}" y1="{y_bottom}" x2="{x:.1f}" y2="{y_bottom + 5}" stroke="#94a3b8" stroke-width="1" />'
+                f'<text x="{x:.1f}" y="{y_bottom + 18}" font-size="10" fill="#475569" text-anchor="middle">{label}</text>'
+            )
+        return "".join(parts)
+    else:
+        # 短天期或局部時間軸
+        step = max(1, (n - 1) // (tick_count - 1)) if n > 1 else 1
+        idxs = list(range(0, n, step))
+        if idxs[-1] != n - 1:
+            idxs.append(n - 1)
+        parts = []
+        for i in idxs:
+            x = xs[i]
+            parts.append(
+                f'<line x1="{x:.1f}" y1="{y_bottom}" x2="{x:.1f}" y2="{y_bottom + 5}" stroke="#94a3b8" stroke-width="1" />'
+                f'<text x="{x:.1f}" y="{y_bottom + 18}" font-size="10" fill="#475569" text-anchor="middle">{dates[i]}</text>'
+            )
+        return "".join(parts)
 
 
 def _render_price_pills(items: List[Tuple[str, float, Optional[float], str]], x_start: float, plot_top: float, plot_height: float) -> str:
@@ -110,11 +173,9 @@ def _render_price_pills(items: List[Tuple[str, float, Optional[float], str]], x_
     if not valid:
         return ""
 
-    # 依 y 軸座標由上到下排序
     valid.sort(key=lambda it: it[2])
     adjusted_y = [it[2] for it in valid]
 
-    # 正向與反向推移避免上下標籤碰撞重疊 (最小間距 20px)
     for i in range(1, len(adjusted_y)):
         if adjusted_y[i] - adjusted_y[i - 1] < 20:
             adjusted_y[i] = adjusted_y[i - 1] + 20
@@ -125,7 +186,6 @@ def _render_price_pills(items: List[Tuple[str, float, Optional[float], str]], x_
 
     svg_parts = []
     for (name, val, orig_y, color), adj_y in zip(valid, adjusted_y):
-        # 繪製引線連接實際點與標籤
         svg_parts.append(
             f'<path d="M {x_start} {orig_y:.1f} L {x_start + 16} {adj_y:.1f} L {x_start + 24} {adj_y:.1f}" '
             f'fill="none" stroke="{color}" stroke-width="1.2" stroke-dasharray="2,2" />'
@@ -157,48 +217,63 @@ def _render_price_svg(
     ]
     vmin, vmax = min(all_vals), max(all_vals)
     pad = (vmax - vmin) * 0.05 or 1.0
-    vmin, vmax = vmin - pad, vmax + pad
-    span = (vmax - vmin) or 1.0
+    vmin_lin, vmax_lin = vmin - pad, vmax + pad
+    span_lin = (vmax_lin - vmin_lin) or 1.0
 
     plot_top = MARGIN_TOP
     plot_height = PRICE_PLOT_HEIGHT
 
-    def scale_one(v):
+    # 線性座標換算
+    def scale_lin(v):
         if v is None:
             return None
-        return plot_top + plot_height - (v - vmin) / span * plot_height
+        return plot_top + plot_height - (v - vmin_lin) / span_lin * plot_height
 
-    y_close = [scale_one(v) for v in close]
-    y_long = [scale_one(v) for v in long_sma]
-    y_fast = [scale_one(v) for v in ema_fast]
-    y_slow = [scale_one(v) for v in ema_slow]
+    y_close_lin = [scale_lin(v) for v in close]
+    y_long_lin = [scale_lin(v) for v in long_sma]
+    y_fast_lin = [scale_lin(v) for v in ema_fast]
+    y_slow_lin = [scale_lin(v) for v in ema_slow]
     xs = _xs(len(dates))
 
-    # 黃金交叉與死亡交叉標記
-    markers = []
+    # 對數座標換算
+    y_axis_log_svg, scale_log = _log_y_axis(vmin, vmax, plot_top, plot_height)
+    y_close_log = [scale_log(v) for v in close]
+    y_long_log = [scale_log(v) for v in long_sma]
+    y_fast_log = [scale_log(v) for v in ema_fast]
+    y_slow_log = [scale_log(v) for v in ema_slow]
+
+    # 黃金交叉與死亡交叉標記 (線性與對數)
+    markers_lin, markers_log = [], []
     for i in range(1, len(dates)):
         f0, s0 = ema_fast[i - 1], ema_slow[i - 1]
         f1, s1 = ema_fast[i], ema_slow[i]
         if None in (f0, s0, f1, s1):
             continue
         if f0 <= s0 and f1 > s1:
-            markers.append((xs[i], scale_one(close[i]), "#16a34a", "黃金交叉", dates[i]))
+            markers_lin.append((xs[i], scale_lin(close[i]), "#16a34a", "黃金交叉", dates[i]))
+            markers_log.append((xs[i], scale_log(close[i]), "#16a34a", "黃金交叉", dates[i]))
         elif f0 >= s0 and f1 < s1:
-            markers.append((xs[i], scale_one(close[i]), "#dc2626", "死亡交叉", dates[i]))
+            markers_lin.append((xs[i], scale_lin(close[i]), "#dc2626", "死亡交叉", dates[i]))
+            markers_log.append((xs[i], scale_log(close[i]), "#dc2626", "死亡交叉", dates[i]))
 
-    marker_svg = "".join(
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" fill="{color}"><title>{label} {date}</title></circle>'
-        for x, y, color, label, date in markers
+    radius = 3.5 if len(dates) > 500 else 5.0
+    marker_lin_svg = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius}" fill="{color}" opacity="0.85"><title>{label} {date}</title></circle>'
+        for x, y, color, label, date in markers_lin if y is not None
+    )
+    marker_log_svg = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius}" fill="{color}" opacity="0.85"><title>{label} {date}</title></circle>'
+        for x, y, color, label, date in markers_log if y is not None
     )
 
-    # 重大金融事件標記 (垂直標記線與圖釘標籤)
+    # 重大金融事件標記 (垂直標記線與圖釘標籤，防文字重疊上下交錯)
     events_svg = []
     if events:
-        for ev in events:
+        valid_evs = [ev for ev in events if dates and dates[0] <= ev.get("date", "") <= dates[-1]]
+        last_ev_x = -999.0
+        stagger = 0
+        for ev in valid_evs:
             ev_date = ev.get("date", "")
-            if not dates or ev_date < dates[0] or ev_date > dates[-1]:
-                continue
-            # 尋找最接近且不大於該事件日的交易日，或第一個 >= 該事件日的索引
             match_idx = None
             for idx, d in enumerate(dates):
                 if d >= ev_date:
@@ -208,6 +283,13 @@ def _render_price_svg(
                 match_idx = len(dates) - 1
 
             ev_x = xs[match_idx]
+            if abs(ev_x - last_ev_x) < 55:
+                stagger = (stagger + 1) % 2
+            else:
+                stagger = 0
+            last_ev_x = ev_x
+
+            text_y = plot_top - 6 if stagger == 0 else plot_top - 18
             title = ev.get("title", "事件")
             desc = ev.get("description", "")
             events_svg.append(
@@ -215,19 +297,27 @@ def _render_price_svg(
                 f'<line x1="{ev_x:.1f}" y1="{plot_top}" x2="{ev_x:.1f}" y2="{plot_top + plot_height}" '
                 f'stroke="#d97706" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.75" />'
                 f'<polygon points="{ev_x-4:.1f},{plot_top-2} {ev_x+4:.1f},{plot_top-2} {ev_x:.1f},{plot_top+6}" fill="#f59e0b" />'
-                f'<text x="{ev_x:.1f}" y="{plot_top - 6}" font-size="9" fill="#b45309" text-anchor="middle" font-weight="600">{title}</text>'
+                f'<text x="{ev_x:.1f}" y="{text_y:.1f}" font-size="9" fill="#b45309" text-anchor="middle" font-weight="600">{title}</text>'
                 f'<title>[{ev_date}] {title}：{desc}</title>'
                 f'</g>'
             )
 
-    # 右側延伸空間：繪製最新價格與各均線 Price Pills
-    pill_items = [
-        ("TQQQ", close[-1], y_close[-1], "#2563eb"),
-        (f"EMA{ema_fast_period}", ema_fast[-1], y_fast[-1], "#0d9488"),
-        (f"EMA{ema_slow_period}", ema_slow[-1], y_slow[-1], "#ea580c"),
-        (f"SMA{long_sma_period}", long_sma[-1], y_long[-1], "#9333ea"),
+    # 右側 Price Pills (線性與對數)
+    pill_items_lin = [
+        ("TQQQ", close[-1], y_close_lin[-1], "#2563eb"),
+        (f"EMA{ema_fast_period}", ema_fast[-1], y_fast_lin[-1], "#0d9488"),
+        (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_lin[-1], "#ea580c"),
+        (f"SMA{long_sma_period}", long_sma[-1], y_long_lin[-1], "#9333ea"),
     ]
-    price_pills_svg = _render_price_pills(pill_items, MARGIN_LEFT + WIDTH, plot_top, plot_height)
+    pills_lin_svg = _render_price_pills(pill_items_lin, MARGIN_LEFT + WIDTH, plot_top, plot_height)
+
+    pill_items_log = [
+        ("TQQQ", close[-1], y_close_log[-1], "#2563eb"),
+        (f"EMA{ema_fast_period}", ema_fast[-1], y_fast_log[-1], "#0d9488"),
+        (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_log[-1], "#ea580c"),
+        (f"SMA{long_sma_period}", long_sma[-1], y_long_log[-1], "#9333ea"),
+    ]
+    pills_log_svg = _render_price_pills(pill_items_log, MARGIN_LEFT + WIDTH, plot_top, plot_height)
 
     total_height = MARGIN_TOP + PRICE_PLOT_HEIGHT + MARGIN_BOTTOM
 
@@ -241,38 +331,66 @@ def _render_price_svg(
     <text x="{MARGIN_LEFT + 890}" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>
     '''
 
-    y_axis_svg = _y_axis(vmin, vmax, plot_top, plot_height)
+    y_axis_lin_svg = _y_axis(vmin_lin, vmax_lin, plot_top, plot_height)
     x_axis_svg = _x_axis(dates, xs, plot_top + plot_height)
 
     toggle_bar = f'''
-    <div style="font-size:13px;margin:6px 0 10px;color:#334155;display:flex;flex-wrap:wrap;gap:18px;align-items:center;">
-      <label style="cursor:pointer;">
-        <input type="checkbox" checked onchange="document.getElementById('ema-fast-line').style.display=this.checked?'inline':'none'"> 顯示短期 EMA({ema_fast_period}日)
+    <div style="font-size:13px;margin:6px 0 10px;color:#334155;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+      <label style="cursor:pointer;font-weight:600;color:#0f172a;background:#f1f5f9;padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1;">
+        座標模式：
+        <select onchange="togglePriceScale(this.value)" style="border:none;background:transparent;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
+          <option value="linear" selected>線性座標 (Linear)</option>
+          <option value="log">對數座標 (Log Scale，推薦長歷史)</option>
+        </select>
       </label>
       <label style="cursor:pointer;">
-        <input type="checkbox" checked onchange="document.getElementById('ema-slow-line').style.display=this.checked?'inline':'none'"> 顯示短期 EMA({ema_slow_period}日)
+        <input type="checkbox" checked onchange="document.querySelectorAll('.ema-fast-layer').forEach(el=>el.style.display=this.checked?'inline':'none')"> 顯示短期 EMA({ema_fast_period}日)
+      </label>
+      <label style="cursor:pointer;">
+        <input type="checkbox" checked onchange="document.querySelectorAll('.ema-slow-layer').forEach(el=>el.style.display=this.checked?'inline':'none')"> 顯示短期 EMA({ema_slow_period}日)
+      </label>
+      <label style="cursor:pointer;">
+        <input type="checkbox" checked onchange="document.querySelectorAll('.cross-marker-layer').forEach(el=>el.style.display=this.checked?'inline':'none')"> 顯示黃金/死亡交叉
       </label>
       <label style="cursor:pointer;">
         <input type="checkbox" checked onchange="document.querySelectorAll('.financial-event').forEach(el=>el.style.display=this.checked?'inline':'none')"> 顯示重大金融事件標記
       </label>
-      <span style="color:#64748b;font-size:12px;margin-left:auto;">（圖右側已標記最新收盤價與均線數值標籤）</span>
+      <span style="color:#64748b;font-size:12px;margin-left:auto;">（時間軸追溯自 2010 年 TQQQ 成立開始 • 右側標記最新均線定位）</span>
     </div>
     '''
+
+    line_width = 1.4 if len(dates) > 1000 else 1.8
+    ma_width = 1.2 if len(dates) > 1000 else 1.4
 
     return f'''
     {toggle_bar}
     <div style="overflow-x:auto;">
       <svg viewBox="0 0 {SVG_WIDTH} {total_height}" width="100%" height="{total_height}" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
         {labels}
-        {y_axis_svg}
         {x_axis_svg}
         {"".join(events_svg)}
-        {_polyline(xs, y_close, "#2563eb", 1.8)}
-        {_polyline(xs, y_long, "#9333ea", 1.4)}
-        <g id="ema-fast-line">{_polyline(xs, y_fast, "#0d9488", 1.4)}</g>
-        <g id="ema-slow-line">{_polyline(xs, y_slow, "#ea580c", 1.4)}</g>
-        {marker_svg}
-        {price_pills_svg}
+
+        <!-- 線性座標圖層 -->
+        <g id="plot-linear">
+          {y_axis_lin_svg}
+          {_polyline(xs, y_close_lin, "#2563eb", line_width)}
+          {_polyline(xs, y_long_lin, "#9333ea", ma_width)}
+          <g class="ema-fast-layer">{_polyline(xs, y_fast_lin, "#0d9488", ma_width)}</g>
+          <g class="ema-slow-layer">{_polyline(xs, y_slow_lin, "#ea580c", ma_width)}</g>
+          <g class="cross-marker-layer">{marker_lin_svg}</g>
+          {pills_lin_svg}
+        </g>
+
+        <!-- 對數座標圖層 -->
+        <g id="plot-log" style="display:none;">
+          {y_axis_log_svg}
+          {_polyline(xs, y_close_log, "#2563eb", line_width)}
+          {_polyline(xs, y_long_log, "#9333ea", ma_width)}
+          <g class="ema-fast-layer">{_polyline(xs, y_fast_log, "#0d9488", ma_width)}</g>
+          <g class="ema-slow-layer">{_polyline(xs, y_slow_log, "#ea580c", ma_width)}</g>
+          <g class="cross-marker-layer">{marker_log_svg}</g>
+          {pills_log_svg}
+        </g>
       </svg>
     </div>
     '''
@@ -311,7 +429,6 @@ def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
             f'<text x="{MARGIN_LEFT + WIDTH + 8}" y="{y+3:.1f}" font-size="10" fill="{color}">{label}</text>'
         )
 
-    # 右側標記最新 RSI 數值
     latest_rsi_svg = ""
     if rsi and rsi[-1] is not None:
         curr_y = scale_one(rsi[-1])
@@ -322,16 +439,17 @@ def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
         )
 
     total_height = MARGIN_TOP + RSI_PLOT_HEIGHT + MARGIN_BOTTOM
+    line_width = 1.2 if len(dates) > 1000 else 1.6
 
     return f'''
     <div style="overflow-x:auto;">
       <svg viewBox="0 0 {SVG_WIDTH} {total_height}" width="100%" height="{total_height}" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
-        <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14)</text>
+        <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14) 震盪指標</text>
         {y_axis_svg}
         {x_axis_svg}
         {''.join(ref_lines)}
         {latest_rsi_svg}
-        {_polyline(xs, y_rsi, "#0f172a", 1.6)}
+        {_polyline(xs, y_rsi, "#0f172a", line_width)}
       </svg>
     </div>
     '''
@@ -341,7 +459,6 @@ def _render_rules_block(rules: List[Rule], recommendation: Recommendation) -> st
     """產生目前遵守的「買入與賣出規則」區塊。"""
     matched_ids = {r["id"] for r in recommendation.matched_rules}
 
-    # 規則分類與徽章輔助函式
     def get_category_badge(action: str) -> str:
         if action == "BUY":
             return '<span class="badge-cat badge-buy">買入進場</span>'
@@ -356,7 +473,6 @@ def _render_rules_block(rules: List[Rule], recommendation: Recommendation) -> st
         return '<span class="badge-cat badge-neutral">監控規則</span>'
 
     def format_condition_friendly(rule_id: str, conds: List[dict]) -> str:
-        # 提供更貼近交易員閱讀的繁體中文條件翻譯
         mapping = {
             "R1_bear_lockout": "QQQ 收盤價 &lt; 200日 SMA（大盤跌破多空分界線）",
             "R2_death_cross_exit": "TQQQ 10EMA 向下死亡交叉 20EMA",
@@ -374,7 +490,6 @@ def _render_rules_block(rules: List[Rule], recommendation: Recommendation) -> st
         return " 且 ".join(parts)
 
     rows = []
-    # 遍歷目前系統規則
     for r in rules:
         is_triggered = r.id in matched_ids
         status_badge = (
@@ -397,7 +512,6 @@ def _render_rules_block(rules: List[Rule], recommendation: Recommendation) -> st
         </tr>
         """)
 
-    # 補充年度再平衡規則說明（系統機制之一）
     rows.append("""
     <tr>
       <td style="font-weight:600;font-family:monospace;">REBAL</td>
@@ -454,7 +568,6 @@ def _render_metrics_panel(ind: DailyIndicators, recommendation: Recommendation) 
     dist_str = f"{ema_slow_dist:+.2f}%" if ema_slow_dist is not None else "N/A"
     rsi_str = f"{rsi_val:.1f}" if rsi_val is not None else "N/A"
 
-    # RSI 評價
     if rsi_val is not None:
         if rsi_val >= 70:
             rsi_eval = '<span style="color:#dc2626;font-weight:700;">過熱警戒 (&ge;70)</span>'
@@ -502,34 +615,57 @@ def _render_metrics_panel(ind: DailyIndicators, recommendation: Recommendation) 
 
 
 def _render_events_table(events: List[dict], dates: List[str]) -> str:
-    """產生重大金融事件時序紀錄表。"""
+    """產生自 TQQQ 成立以來重大金融事件時序紀錄表。"""
     if not events or not dates:
         return ""
     start_date, end_date = dates[0], dates[-1]
     filtered = [e for e in events if start_date <= e.get("date", "") <= end_date]
     if not filtered:
-        filtered = events[-8:]  # 若無落在該窗口，列出最近事件
+        filtered = events
+
+    # 依日期由新至舊排列便於閱讀
+    sorted_evs = sorted(filtered, key=lambda e: e.get("date", ""), reverse=True)
 
     rows = []
-    for ev in filtered:
+    cat_badges = {
+        "inception": '<span class="badge-cat" style="background:#e0f2fe;color:#0369a1;">上市成立</span>',
+        "market": '<span class="badge-cat" style="background:#fef3c7;color:#b45309;">市場行情</span>',
+        "crisis": '<span class="badge-cat badge-sell">重大危機</span>',
+        "debt": '<span class="badge-cat badge-sell">債信評等</span>',
+        "fed": '<span class="badge-cat badge-rebal">貨幣政策</span>',
+        "election": '<span class="badge-cat badge-buy">大選政局</span>',
+        "earnings": '<span class="badge-cat badge-trim">產業財報</span>',
+        "policy": '<span class="badge-cat badge-filter">政府政策</span>',
+        "strategy": '<span class="badge-cat badge-neutral">策略機制</span>',
+    }
+
+    for ev in sorted_evs:
+        cat_badge = cat_badges.get(ev.get("category", ""), '<span class="badge-cat badge-neutral">金融事件</span>')
         rows.append(f"""
         <tr>
           <td style="font-family:monospace;font-weight:600;">{ev.get('date')}</td>
-          <td style="font-weight:600;color:#b45309;">{ev.get('title')}</td>
+          <td>{cat_badge}</td>
+          <td style="font-weight:600;color:#0f172a;">{ev.get('title')}</td>
           <td style="font-size:13px;color:#475569;">{ev.get('description')}</td>
         </tr>
         """)
 
     return f"""
     <div class="card">
-      <h3 style="margin-top:0;font-size:18px;">重大金融事件時序紀錄 (Financial Events Timeline)</h3>
-      <p style="color:#64748b;font-size:13px;margin:4px 0 12px;">圖表上方已標示重大總體經濟決策、利率政策與科技板塊重大事件，供對照價格與動能反應。</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:18px;">重大金融事件時序紀錄 (2010年 TQQQ 成立至今)</h3>
+        <span style="font-size:12px;color:#64748b;background:#f8fafc;padding:3px 8px;border-radius:4px;border:1px solid #e2e8f0;">
+          共收錄 {len(sorted_evs)} 項重大事件 • 依時間最新順序呈現
+        </span>
+      </div>
+      <p style="color:#64748b;font-size:13px;margin:4px 0 12px;">圖表上方已精準標示歷年總體經濟決策、利率政策、黑天鵝崩盤與科技牛市轉折點，方便比對均線策略在歷史重大考驗下的執行表現。</p>
       <div style="overflow-x:auto;">
         <table class="rules-table">
           <thead>
             <tr>
-              <th style="width:120px;">事件日期</th>
-              <th style="width:200px;">事件名稱</th>
+              <th style="width:110px;">事件日期</th>
+              <th style="width:100px;">類別</th>
+              <th style="width:230px;">事件名稱</th>
               <th>事件背景與市場影響</th>
             </tr>
           </thead>
@@ -549,8 +685,12 @@ def render_html_report(
     settings: Optional[dict] = None,
     rules: Optional[List[Rule]] = None,
     events_path: str = "config/events.json",
-    window: int = 250,
+    window: Optional[int] = None,
 ) -> None:
+    # 若未指定 window，預設取完整時間軸（追溯回 TQQQ 成立之初）
+    if window is None:
+        window = len(ind.dates)
+
     ma_cfg = (settings or {}).get("moving_averages", {})
     long_sma_period = ma_cfg.get("chart_long_sma", 200)
     ema_fast_period = ma_cfg.get("target_fast_ema", 10)
@@ -574,6 +714,8 @@ def render_html_report(
 
     tqqq_close = ind.tqqq_close[-1]
     qqq_close = ind.qqq_close[-1]
+    first_date = ind.dates[-window]
+    last_date = ind.dates[-1]
 
     # 版本與時間戳記
     now_cst = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -624,6 +766,15 @@ body {{
   padding: 3px 8px;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
+}}
+.badge-inception {{
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #bbf7d0;
+  font-weight: 600;
 }}
 .card {{
   background: #ffffff;
@@ -699,7 +850,17 @@ footer {{
   color: #64748b;
   text-align: center;
 }}
-</style></head>
+</style>
+<script>
+function togglePriceScale(mode) {{
+  var isLog = mode === 'log';
+  var pLin = document.getElementById('plot-linear');
+  var pLog = document.getElementById('plot-log');
+  if (pLin) pLin.style.display = isLog ? 'none' : 'inline';
+  if (pLog) pLog.style.display = isLog ? 'inline' : 'none';
+}}
+</script>
+</head>
 <body>
   <div class="header-bar">
     <div>
@@ -709,6 +870,7 @@ footer {{
     <div class="version-badge-group">
       <span class="badge-version">平台版本：{VERSION}</span>
       <span class="badge-timestamp">產出時間戳記：{now_cst}</span>
+      <span class="badge-inception">全歷史時間軸：{first_date} 至 {last_date}（自 TQQQ 成立開始）</span>
     </div>
   </div>
 
@@ -731,7 +893,12 @@ footer {{
 
   <!-- 4. 價格與均線區塊 -->
   <div class="card">
-    <h3 style="margin-top:0;font-size:18px;">價格與均線（長期SMA框架 + 短期EMA 10日/20日觸發）</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+      <h3 style="margin:0;font-size:18px;">價格與均線（長期SMA框架 + 短期EMA 10日/20日觸發）</h3>
+      <span style="font-size:12px;color:#475569;background:#f8fafc;padding:3px 8px;border-radius:4px;border:1px solid #e2e8f0;">
+        時間軸已延長追溯回 TQQQ 成立首日 ({first_date}) • 共 {window} 交易日
+      </span>
+    </div>
     {price_svg}
   </div>
 
@@ -745,7 +912,7 @@ footer {{
   {events_table_html}
 
   <footer>
-    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：{VERSION} • 報表時間戳記：{now_cst} • 零外部套件相依純標準庫架構
+    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：{VERSION} • 報表時間戳記：{now_cst} • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
 </body></html>"""
 
