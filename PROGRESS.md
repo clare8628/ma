@@ -5,7 +5,8 @@
 - [x] 資料驅動規則引擎（可編輯 rules.json）
 - [x] 訊號整合：QQQ大盤過濾 + TQQQ EMA交叉 + RSI過濾
 - [x] 年度11/1再平衡檢核（mgtasset站台串接：介面已留，待API規格，見STATE.md）
-- [x] 零相依 SVG 圖表報告 (SMA200框架+EMA20觸發+RSI參考線)
+- [x] 零相依 SVG 圖表報告 (SMA200框架+EMA10/20雙觸發線+RSI參考線)，雙圖皆加縱橫軸刻度，RSI放大3倍，EMA可圖上開關隱藏
+- [x] daily-signal.yml 每日自動 rebuild + commit + push public/index.html，網頁日期/股價不再是靜態快照
 - [x] 單元測試 25/25 通過 (unittest, 無需安裝套件)
 - [x] CLI 端對端驗證：離線CSV + 即時Yahoo資料皆通過
 - [x] README / GitHub Actions 排程範例
