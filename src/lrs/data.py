@@ -8,14 +8,28 @@ from __future__ import annotations
 import csv
 import json
 import os
+import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import List, Optional
 
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 USER_AGENT = "Mozilla/5.0 (compatible; LRS-Bot/1.0)"
+
+
+def _get_ssl_context() -> Optional[ssl.SSLContext]:
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        pass
+    try:
+        return ssl.create_default_context()
+    except Exception:
+        return None
 
 
 @dataclass
@@ -30,7 +44,12 @@ class DataFetchError(RuntimeError):
 
 def _cache_path(cache_dir: str, symbol: str) -> str:
     os.makedirs(cache_dir, exist_ok=True)
-    return os.path.join(cache_dir, f"{symbol.upper()}.json")
+    clean_symbol = symbol.upper().replace("^", "")
+    # 若存在含 ^ 的舊檔名優先沿用，否則使用乾淨檔名
+    raw_path = os.path.join(cache_dir, f"{symbol.upper()}.json")
+    if os.path.exists(raw_path):
+        return raw_path
+    return os.path.join(cache_dir, f"{clean_symbol}.json")
 
 
 def _load_cache(cache_dir: str, symbol: str) -> Optional[dict]:
@@ -74,10 +93,12 @@ def fetch_history(
         query = f"period1=0&period2=9999999999&interval={interval}"
     else:
         query = f"range={range_}&interval={interval}"
-    url = YAHOO_CHART_URL.format(symbol=symbol) + f"?{query}"
+    safe_symbol = urllib.parse.quote(symbol)
+    url = YAHOO_CHART_URL.format(symbol=safe_symbol) + f"?{query}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    ctx = _get_ssl_context()
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
             raw = json.loads(resp.read())
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         if cached:

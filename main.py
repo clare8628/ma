@@ -48,6 +48,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="TQQQ 槓桿輪換策略 (LRS)")
     parser.add_argument("--qqq-csv", default=None, help="離線模式：QQQ 歷史資料 CSV (date,close)")
     parser.add_argument("--tqqq-csv", default=None, help="離線模式：TQQQ 歷史資料 CSV (date,close)")
+    parser.add_argument("--vix-csv", default=None, help="離線模式：VIX 歷史資料 CSV (date,close)")
     parser.add_argument("--output", "-o", default=REPORT_PATH, help=f"HTML 圖表報告輸出路徑 (預設: {REPORT_PATH})")
     parser.add_argument("--no-chart", action="store_true", help="不產生 HTML 圖表報告")
     parser.add_argument("--mark-filled", action="store_true", help="標記已依建議進場建倉")
@@ -75,8 +76,10 @@ def main() -> int:
 
     qqq_bars = get_bars(settings["benchmark_symbol"], args.qqq_csv, settings)
     tqqq_bars = get_bars(settings["target_symbol"], args.tqqq_csv, settings)
+    vix_symbol = settings.get("vix_symbol", "^VIX")
+    vix_bars = get_bars(vix_symbol, args.vix_csv, settings)
 
-    ind = signals.compute_indicators(settings, qqq_bars, tqqq_bars)
+    ind = signals.compute_indicators(settings, qqq_bars, tqqq_bars, vix_bars)
     rec = signals.recommend(rules, ind, position)
 
     print(f"=== LRS 建議 ({rec.date}) ===")
@@ -87,6 +90,14 @@ def main() -> int:
             print(f"  - [{r['id']}] {r['name']}: {r['message']}")
     else:
         print("  - 無規則觸發，維持觀望")
+
+    vix_ctx = rec.context.get("vix", {})
+    vix_close = vix_ctx.get("close")
+    vix_close_str = f"{vix_close:.2f}" if vix_close is not None else "無資料"
+    print("\n=== VIX 恐慌指數綜合判斷 ===")
+    print(f"最新數值: {vix_close_str} — {vix_ctx.get('label', 'N/A')}")
+    print(f"情緒評估: {vix_ctx.get('description', 'N/A')}")
+    print(f"策略指引: {vix_ctx.get('guidance', 'N/A')}")
 
     rb = rebalance.check_rebalance(settings)
     print("\n=== 年度再平衡檢核 (11/1) ===")

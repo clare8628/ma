@@ -92,6 +92,7 @@ class TestChart(unittest.TestCase):
         block_html = _render_rules_block(rules, self.rec)
         self.assertIn("trading-rules-block", block_html)
         self.assertIn("策略執行規範：目前遵守之「買入與賣出規則」", block_html)
+        self.assertIn("恐慌抄底", block_html)
         self.assertIn("大盤空頭禁令", block_html)
         self.assertIn("進場(黃金交叉+RSI確認)", block_html)
         self.assertIn("11/1 資產再平衡", block_html)
@@ -109,7 +110,11 @@ class TestChart(unittest.TestCase):
             self.assertIn(f"平台版本：{VERSION}", content)
             self.assertIn("產出時間戳記：", content)
 
-            # 2. 驗證「買入與賣出規則」區塊位於「建議動作」與「價格與均線」中間
+            # 2. 驗證包含 VIX 綜合判斷與分析卡片
+            self.assertIn("vix-analysis-card", content)
+            self.assertIn("VIX 恐慌指數綜合判斷", content)
+
+            # 3. 驗證「買入與賣出規則」區塊位於「建議動作」與「價格與均線」中間
             action_pos = content.find("建議動作：")
             rules_pos = content.find("id=\"trading-rules-block\"")
             chart_pos = content.find("價格與均線（長期SMA框架")

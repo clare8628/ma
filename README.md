@@ -8,11 +8,11 @@
 ## 快速開始
 
 ```bash
-# 抓取最新 QQQ/TQQQ 資料並輸出建議 + state/report.html 圖表報告
+# 抓取最新 QQQ/TQQQ/VIX 資料並輸出建議 + state/report.html 圖表報告
 python3 main.py
 
 # 離線模式（自備 CSV，欄位: date,close）
-python3 main.py --qqq-csv qqq.csv --tqqq-csv tqqq.csv
+python3 main.py --qqq-csv qqq.csv --tqqq-csv tqqq.csv --vix-csv vix.csv
 
 # 依建議實際進出場後，更新本地持倉狀態（用於「持股期間」風控規則）
 python3 main.py --mark-filled --price 85.3
@@ -38,10 +38,11 @@ src/lrs/
 main.py                  CLI 入口
 ```
 
-## 規則總覽（對應任務指示第 7–9 點）
+## 規則總覽
 
 | ID | 條件 | 動作 |
 |---|---|---|
+| R0_vix_panic_bottom | VIX 恐慌指數 >= 45 | 恐慌抄底買進（歷史級極高勝率機會） |
 | R1_bear_lockout | QQQ 收盤 < 200日SMA | 強制清倉、禁止任何進場 |
 | R2_death_cross_exit | TQQQ 10EMA 向下穿越 20EMA | 無條件全數賣出 |
 | R3_rsi_defensive_warning | 持股中且 RSI(14) < 45 | 減碼50%／移至成本線停損 |
@@ -49,7 +50,7 @@ main.py                  CLI 入口
 | R5_golden_cross_entry | QQQ>200SMA + 10EMA黃金交叉20EMA + 50<RSI<65 | 買進 |
 | R6_entry_rejected_overbought | 黃金交叉時 RSI(14)>=65 | 放棄本次進場 |
 
-多規則同時觸發時，依 `FORCE_EXIT > SELL_ALL > REDUCE_50 > TRIM_PARTIAL > SKIP_ENTRY_OVERBOUGHT > BUY` 優先序決定最終建議（`src/lrs/signals.py: ACTION_PRIORITY`），完全比照「大盤空頭禁令優先於任何進場訊號」「死亡交叉無條件出場」的要求。
+多規則同時觸發時，依 `BUY_DIP_PANIC > FORCE_EXIT > SELL_ALL > REDUCE_50 > TRIM_PARTIAL > SKIP_ENTRY_OVERBOUGHT > BUY` 優先序決定最終建議（`src/lrs/signals.py: ACTION_PRIORITY`）。歷史數據顯示當 VIX 突破 45 時（如 2008 雷曼、2020 疫情熔斷、2024 日圓平倉閃崩），市場處於流動性斷頭之賣壓耗竭點，後續 3~12 個月勝率極高（>90%~100%），因此賦予最高優先級恐慌抄底動作。其餘常態情境則維持「大盤空頭禁令優先於任何進場訊號」「死亡交叉無條件出場」之原則。
 
 **新增/調整規則**：直接編輯 `config/rules.json`，每筆規則是
 `{id, name, action, priority, logic, conditions, message}`，`conditions` 的

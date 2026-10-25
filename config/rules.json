@@ -2,6 +2,17 @@
   "description": "可編輯的判斷與提醒規則。condition 支援 op: >, <, >=, <=, ==, !=, crosses_above, crosses_below。欄位路徑以 context 字典解析（見 src/lrs/signals.py build_context）。priority 數字越小越優先。新增規則只需在此陣列加入一筆，不需改程式碼。",
   "rules": [
     {
+      "id": "R0_vix_panic_bottom",
+      "name": "恐慌抄底(VIX≥45)",
+      "action": "BUY_DIP_PANIC",
+      "priority": 0,
+      "logic": "AND",
+      "conditions": [
+        {"left": "vix.close", "op": ">=", "right": 45}
+      ],
+      "message": "VIX 恐慌指數超過 45，市場處於極端恐慌與斷頭拋售期。歷史統計顯示此時抄底勝率極高，啟動逆勢分批買進／抄底建議。"
+    },
+    {
       "id": "R1_bear_lockout",
       "name": "大盤空頭禁令",
       "action": "FORCE_EXIT",

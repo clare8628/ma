@@ -1,6 +1,7 @@
 {
   "benchmark_symbol": "QQQ",
   "target_symbol": "TQQQ",
+  "vix_symbol": "^VIX",
   "defensive_assets": ["CASH", "SHY", "BIL"],
   "moving_averages": {
     "benchmark_gate_sma": 200,
@@ -18,6 +19,12 @@
     "overheat": 70,
     "midline": 55,
     "overbought_line": 65
+  },
+  "vix": {
+    "symbol": "^VIX",
+    "panic_threshold": 45,
+    "high_threshold": 30,
+    "normal_threshold": 20
   },
   "overheat_extension_pct": 15,
   "overheat_trim_fraction_min": 0.33,
