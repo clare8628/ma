@@ -21,12 +21,18 @@
 - [x] 版面左右兩側閒置空間充分利用（頁面最大寬度擴充至 1760px，SVG 畫布拓寬至 1600px，指標面板與表格自適應延展）
 - [x] 單元測試 35/35 通過 (含 indicators, rules_engine, signals, rebalance, chart 全面覆蓋，版本升級至 v1.4.0)
 
-- [x] [MAM-3] VIX 指數超過 45 抄底綜合判斷整合 (版本升級至 v1.5.0)
+- [x] [MAM-3] VIX 指數超過 45 抄底綜合判斷整合 (版本升級至 v1.5.0 ~ v1.5.1)
   - 新增 VIX 恐慌指數全歷史日線資料擷取與快取 (`^VIX` -> `state/cache/VIX.json`)，支援 `--vix-csv` 離線模式
   - 規則庫新增 `R0_vix_panic_bottom`（VIX ≥ 45 觸發 `BUY_DIP_PANIC` 恐慌抄底買進，設定為最高優先級，打破常規空頭限制）
   - 核心訊號引擎加入 `evaluate_vix_regime` 綜合評估模型（極度恐慌、恐慌警戒、中度波動、低波動平穩四級分級與策略指引）
   - 前端與報告整合：指標速覽面板新增 VIX 即時狀態卡片，新增「VIX 恐慌指數綜合判斷與歷史抄底勝率分析」專區
-  - 單元測試全面擴充 (39/39 通過，包含 VIX 抄底觸發、分級邏輯與資料對齊測試)
+  - [MAM-3 追加指示] VIX 指標曲線加入價格與均線圖中 (v1.5.1)：
+    - 主圖（價格與均線圖）正式整合 VIX 恐慌指數曲線，映射至專屬波動率刻度 (10~80+)
+    - 繪製 VIX 45 恐慌抄底水平警戒虛線與右側數值刻度，一眼看清歷史大底與 VIX 爆發點
+    - 工具列新增「顯示 VIX 恐慌指標曲線」開關（支援 toggle 隨時隱藏/顯示）
+    - 右側 Price Pills 加入最新 VIX 定位標籤，動態防重疊排列
+    - 前端 JavaScript 重繪引擎全區間 (1M/3M/6M/1Y/2Y/5Y/10Y/ALL) 與線性/對數座標無縫即時連動
+  - 單元測試全面擴充 (40/40 通過，包含 VIX 抄底觸發、分級邏輯、資料對齊與主圖 VIX 曲線渲染測試)
 
-測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (39/39 通過)。
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (40/40 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。

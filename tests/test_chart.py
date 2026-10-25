@@ -41,6 +41,20 @@ class TestChart(unittest.TestCase):
             tqqq_rsi=rsi,
         )
 
+        vix_values = [18.0 + (i * 0.5) for i in range(19)] + [46.5]
+        self.ind_with_vix = DailyIndicators(
+            dates=dates,
+            qqq_close=[400.0 + i for i in range(20)],
+            qqq_sma_gate=[380.0 for _ in range(20)],
+            tqqq_close=close,
+            tqqq_ema_fast=ema_fast,
+            tqqq_ema_slow=ema_slow,
+            tqqq_ema_chart_short=ema_slow,
+            tqqq_sma_chart_long=sma200,
+            tqqq_rsi=rsi,
+            vix_close=vix_values,
+        )
+
         self.rec = Recommendation(
             date="2026-01-20",
             action="HOLD",
@@ -79,6 +93,27 @@ class TestChart(unittest.TestCase):
         self.assertIn("SMA200", svg_html)
         # 驗證右側最新數值標籤與雙側刻度
         self.assertIn("viewBox", svg_html)
+
+    def test_render_price_svg_with_vix_curve(self):
+        # 驗證將 VIX 指標曲線加入價格與均線圖中
+        svg_html = _render_price_svg(
+            self.ind_with_vix,
+            window=20,
+            long_sma_period=200,
+            ema_fast_period=10,
+            ema_slow_period=20,
+        )
+        # 1. 驗證 VIX 專屬圖層與折線
+        self.assertIn("vix-line-layer", svg_html)
+        # 2. 驗證圖例包含 VIX 恐慌指數與 45 抄底門檻
+        self.assertIn("■ VIX 恐慌指數", svg_html)
+        self.assertIn("VIX 45 抄底門檻", svg_html)
+        # 3. 驗證包含 VIX 45 門檻水平參考虛線
+        self.assertIn('stroke="#fda4af"', svg_html)
+        # 4. 驗證工具列包含 VIX 顯示切換開關
+        self.assertIn("toggleLayer('vix-line', this.checked)", svg_html)
+        # 5. 驗證右側 Price Pills 包含最新 VIX 標籤
+        self.assertIn("VIX 46.5", svg_html)
 
     def test_render_rsi_svg(self):
         rsi_svg = _render_rsi_svg(self.ind, window=20)
@@ -154,7 +189,7 @@ class TestChart(unittest.TestCase):
     def test_time_range_selector_and_wide_layout(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             out_path = os.path.join(tmpdir, "report.html")
-            render_html_report(out_path, self.ind, self.rec)
+            render_html_report(out_path, self.ind_with_vix, self.rec)
             with open(out_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
@@ -172,9 +207,11 @@ class TestChart(unittest.TestCase):
             self.assertIn('preset-period-select', content)
             self.assertIn('range-info-badge', content)
 
-            # 驗證嵌入了完整前端資料 JSON
+            # 驗證嵌入了完整前端資料 JSON (包含 VIX 歷史資料)
             self.assertIn('id="chart-data"', content)
             self.assertIn('"tqqq_close":', content)
+            self.assertIn('"vix":', content)
+            self.assertIn("'vix-line': true", content)
 
             # 驗證版面寬度充份利用 (擴充至 1760px)
             self.assertIn('max-width: 1760px', content)

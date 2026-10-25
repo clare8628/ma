@@ -1,11 +1,11 @@
 """零相依套件的圖表產生器：純字串組裝 SVG，輸出單一自包含 HTML 報告。
 
-主圖：TQQQ 收盤價 + 長期 SMA(預設200日，框架) + 短期 EMA 10日/20日(觸發)，
-      兩條短期 EMA 各自可用圖上開關隱藏，並標示黃金/死亡交叉點及重大金融事件時間點。
+主圖：TQQQ 收盤價 + 長期 SMA(預設200日，框架) + 短期 EMA 10日/20日(觸發) + VIX 恐慌指標曲線(含 45 抄底門檻)，
+      均線與 VIX 曲線各自可用圖上開關隱藏，並標示黃金/死亡交叉點及重大金融事件時間點。
       支援時間軸延長追溯回 TQQQ 2010 年成立開始（全歷史 All-Time）。
       支援線性座標 (Linear) 與對數座標 (Log Scale) 即時切換，便於長週期觀察。
       支援觀察時間區間方便可調（1M/3M/6M/1Y/2Y/5Y/10Y/ALL 及關鍵歷史情境跳轉），避免全時間長度過於擁擠。
-      版面左右兩側充分利用：最大寬度擴充至寬螢幕友善自適應（1760px），右側標記最新均線定位 (Price Pills)。
+      版面左右兩側充分利用：最大寬度擴充至寬螢幕友善自適應（1760px），右側標記最新均線與 VIX 定位 (Price Pills)。
 副圖：RSI(14)，含 45/50/55/65/70 參考線（避險/進場下緣/中線/超買/過熱）及最新 RSI 指標標籤。
 兩圖皆含縱軸（雙側數值刻度）與橫軸（日期/年份刻度）。
 報告同時整合版本時間戳記、目前遵守之「買入與賣出規則」區塊及重大金融事件時間軸。
@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.5.0"
+VERSION = "v1.5.1"
 
 # 擴充畫布寬度與高度以充分利用寬螢幕與兩側空間
 WIDTH = 1380
@@ -303,6 +303,49 @@ def _render_price_svg(
                 f'</g>'
             )
 
+    # VIX 恐慌指標曲線換算 (映射至主圖專屬波動率刻度 10~80+)
+    vix = ind.vix_close[-window:] if getattr(ind, "vix_close", None) else []
+    valid_vix = [v for v in vix if v is not None]
+    vix_layer_svg = ""
+    scale_vix = None
+    if valid_vix:
+        vix_min = 10.0
+        vix_max = max(80.0, max(valid_vix) + 5.0)
+        vix_span = (vix_max - vix_min) or 1.0
+
+        def _scale_vix_fn(v: Optional[float]) -> Optional[float]:
+            if v is None:
+                return None
+            return plot_top + plot_height - (v - vix_min) / vix_span * plot_height
+
+        scale_vix = _scale_vix_fn
+        y_vix = [scale_vix(v) for v in vix]
+        vix_line_width = 1.4 if len(dates) > 1000 else 1.6
+        vix_polyline = _polyline(xs, y_vix, "#e11d48", vix_line_width)
+
+        y_45 = scale_vix(45.0)
+        vix_ref_svg = (
+            f'<line x1="{MARGIN_LEFT}" y1="{y_45:.1f}" x2="{MARGIN_LEFT + WIDTH}" y2="{y_45:.1f}" '
+            f'stroke="#fda4af" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />'
+            f'<text x="{MARGIN_LEFT + WIDTH - 8}" y="{y_45 - 4:.1f}" font-size="10" fill="#be123c" font-weight="600" text-anchor="end">VIX 45 抄底門檻</text>'
+        )
+
+        vix_ticks_svg = []
+        for tick_val in [20, 30, 60]:
+            y_t = scale_vix(float(tick_val))
+            if y_t is not None and plot_top <= y_t <= plot_top + plot_height:
+                vix_ticks_svg.append(
+                    f'<text x="{MARGIN_LEFT + WIDTH - 8}" y="{y_t + 3:.1f}" font-size="9" fill="#fda4af" text-anchor="end">VIX {tick_val}</text>'
+                )
+
+        vix_layer_svg = (
+            f'<g class="vix-line-layer">'
+            f'{vix_ref_svg}'
+            f'{"".join(vix_ticks_svg)}'
+            f'{vix_polyline}'
+            f'</g>'
+        )
+
     # 右側 Price Pills (線性與對數)
     pill_items_lin = [
         ("TQQQ", close[-1], y_close_lin[-1], "#2563eb"),
@@ -310,14 +353,18 @@ def _render_price_svg(
         (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_lin[-1], "#ea580c"),
         (f"SMA{long_sma_period}", long_sma[-1], y_long_lin[-1], "#9333ea"),
     ]
-    pills_lin_svg = _render_price_pills(pill_items_lin, MARGIN_LEFT + WIDTH, plot_top, plot_height)
-
     pill_items_log = [
         ("TQQQ", close[-1], y_close_log[-1], "#2563eb"),
         (f"EMA{ema_fast_period}", ema_fast[-1], y_fast_log[-1], "#0d9488"),
         (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_log[-1], "#ea580c"),
         (f"SMA{long_sma_period}", long_sma[-1], y_long_log[-1], "#9333ea"),
     ]
+    if vix and vix[-1] is not None and scale_vix is not None:
+        y_vix_last = scale_vix(vix[-1])
+        pill_items_lin.append(("VIX", vix[-1], y_vix_last, "#e11d48"))
+        pill_items_log.append(("VIX", vix[-1], y_vix_last, "#e11d48"))
+
+    pills_lin_svg = _render_price_pills(pill_items_lin, MARGIN_LEFT + WIDTH, plot_top, plot_height)
     pills_log_svg = _render_price_pills(pill_items_log, MARGIN_LEFT + WIDTH, plot_top, plot_height)
 
     total_height = MARGIN_TOP + PRICE_PLOT_HEIGHT + MARGIN_BOTTOM
@@ -330,6 +377,8 @@ def _render_price_svg(
     <text x="{MARGIN_LEFT + 710}" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>
     <text x="{MARGIN_LEFT + 820}" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>
     <text x="{MARGIN_LEFT + 930}" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>
+    <text x="{MARGIN_LEFT + 1070}" y="18" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>
+    <text x="{MARGIN_LEFT + 1200}" y="18" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>
     '''
 
     y_axis_lin_svg = _y_axis(vmin_lin, vmax_lin, plot_top, plot_height)
@@ -388,7 +437,10 @@ def _render_price_svg(
       <label style="cursor:pointer;">
         <input type="checkbox" checked onchange="toggleLayer('financial-event', this.checked)"> 顯示重大金融事件標記
       </label>
-      <span style="color:#64748b;font-size:12px;margin-left:auto;">（可自由切換區間以避免擁擠 • 右側標記最新均線定位）</span>
+      <label style="cursor:pointer;">
+        <input type="checkbox" checked onchange="toggleLayer('vix-line', this.checked)"> 顯示 VIX 恐慌指標曲線
+      </label>
+      <span style="color:#64748b;font-size:12px;margin-left:auto;">（可自由切換區間以避免擁擠 • 右側標記最新均線與 VIX 定位）</span>
     </div>
     '''
 
@@ -411,6 +463,7 @@ def _render_price_svg(
           <g class="ema-fast-layer">{_polyline(xs, y_fast_lin, "#0d9488", ma_width)}</g>
           <g class="ema-slow-layer">{_polyline(xs, y_slow_lin, "#ea580c", ma_width)}</g>
           <g class="cross-marker-layer">{marker_lin_svg}</g>
+          {vix_layer_svg}
           {pills_lin_svg}
         </g>
 
@@ -422,6 +475,7 @@ def _render_price_svg(
           <g class="ema-fast-layer">{_polyline(xs, y_fast_log, "#0d9488", ma_width)}</g>
           <g class="ema-slow-layer">{_polyline(xs, y_slow_log, "#ea580c", ma_width)}</g>
           <g class="cross-marker-layer">{marker_log_svg}</g>
+          {vix_layer_svg}
           {pills_log_svg}
         </g>
       </svg>
@@ -1044,7 +1098,8 @@ var layerVisibility = {{
   'ema-fast': true,
   'ema-slow': true,
   'cross-marker': true,
-  'financial-event': true
+  'financial-event': true,
+  'vix-line': true
 }};
 
 var chartData = null;
@@ -1323,11 +1378,58 @@ function renderDynamicSVG(rangeKey) {{
     }}
   }}
 
+  // 8.5 VIX 恐慌指標曲線
+  var subVix = chartData.vix ? chartData.vix.slice(s, e) : [];
+  var validVix = [];
+  for (var i = 0; i < n; i++) {{
+    if (subVix[i] !== null && subVix[i] !== undefined) validVix.push(subVix[i]);
+  }}
+  var vixLayerSvg = '';
+  var vixPillItem = null;
+  if (validVix.length > 0) {{
+    var vixMin = 10.0;
+    var maxInVix = Math.max.apply(null, validVix);
+    var vixMax = Math.max(80.0, maxInVix + 5.0);
+    var vixSpan = (vixMax - vixMin) || 1.0;
+
+    function scaleVix(v) {{
+      if (v === null || v === undefined) return null;
+      return CHART_MARGIN_TOP + CHART_PRICE_HEIGHT - ((v - vixMin) / vixSpan) * CHART_PRICE_HEIGHT;
+    }}
+
+    var vixLineWidth = n > 1000 ? 1.4 : 1.6;
+    var vixPolyline = buildPolyline(subVix, scaleVix, '#e11d48', vixLineWidth);
+    var y45 = scaleVix(45.0);
+    var vixRefSvg = '<line x1="' + CHART_MARGIN_LEFT + '" y1="' + y45.toFixed(1) + '" x2="' + (CHART_MARGIN_LEFT + CHART_WIDTH) + '" y2="' + y45.toFixed(1) + '" stroke="#fda4af" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />' +
+      '<text x="' + (CHART_MARGIN_LEFT + CHART_WIDTH - 8) + '" y="' + (y45 - 4).toFixed(1) + '" font-size="10" fill="#be123c" font-weight="600" text-anchor="end">VIX 45 抄底門檻</text>';
+
+    var vixTicksSvg = '';
+    var tickVals = [20, 30, 60];
+    for (var tv = 0; tv < tickVals.length; tv++) {{
+      var yt = scaleVix(tickVals[tv]);
+      if (yt !== null && yt >= CHART_MARGIN_TOP && yt <= CHART_MARGIN_TOP + CHART_PRICE_HEIGHT) {{
+        vixTicksSvg += '<text x="' + (CHART_MARGIN_LEFT + CHART_WIDTH - 8) + '" y="' + (yt + 3).toFixed(1) + '" font-size="9" fill="#fda4af" text-anchor="end">VIX ' + tickVals[tv] + '</text>';
+      }}
+    }}
+
+    vixLayerSvg = '<g class="vix-line-layer" style="display:' + (layerVisibility['vix-line'] !== false ? 'inline' : 'none') + ';">' +
+      vixRefSvg +
+      vixTicksSvg +
+      vixPolyline +
+      '</g>';
+
+    var lastVixVal = subVix[n - 1];
+    if (lastVixVal !== null && lastVixVal !== undefined) {{
+      vixPillItem = {{ name: 'VIX', val: lastVixVal, color: '#e11d48', customScale: scaleVix }};
+    }}
+  }}
+
   // 9. 右側 Price Pills (防重疊)
   function buildPills(items, scaleFn) {{
     var valid = [];
     for (var k = 0; k < items.length; k++) {{
-      var y = scaleFn(items[k].val);
+      var itemScale = items[k].customScale || scaleFn;
+      var y = itemScale(items[k].val);
       if (y !== null) valid.push({{ name: items[k].name, val: items[k].val, origY: y, color: items[k].color }});
     }}
     if (!valid.length) return '';
@@ -1362,6 +1464,9 @@ function renderDynamicSVG(rangeKey) {{
     {{ name: 'EMA' + chartData.ema_slow_period, val: lastSlow, color: '#ea580c' }},
     {{ name: 'SMA' + chartData.long_sma_period, val: lastLong, color: '#9333ea' }}
   ];
+  if (vixPillItem) {{
+    pillDef.push(vixPillItem);
+  }}
 
   var pillsLinSvg = buildPills(pillDef, scaleLin);
   var pillsLogSvg = buildPills(pillDef, scaleLog);
@@ -1377,7 +1482,9 @@ function renderDynamicSVG(rangeKey) {{
     '<text x="' + (CHART_MARGIN_LEFT + 540) + '" y="18" font-size="13" fill="#ea580c">■ 短期 EMA(' + chartData.ema_slow_period + '日)</text>' +
     '<text x="' + (CHART_MARGIN_LEFT + 710) + '" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>' +
     '<text x="' + (CHART_MARGIN_LEFT + 820) + '" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 930) + '" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>';
+    '<text x="' + (CHART_MARGIN_LEFT + 930) + '" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 1070) + '" y="18" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 1200) + '" y="18" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>';
 
   var isLog = currentScaleMode === 'log';
   var priceSvgHtml = '<svg id="price-chart-svg" viewBox="0 0 ' + CHART_SVG_WIDTH + ' ' + totalHeight + '" width="100%" height="' + totalHeight + '" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">' +
@@ -1392,6 +1499,7 @@ function renderDynamicSVG(rangeKey) {{
       '<g class="ema-fast-layer" style="display:' + (layerVisibility['ema-fast'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaFast, scaleLin, '#0d9488', maWidth) + '</g>' +
       '<g class="ema-slow-layer" style="display:' + (layerVisibility['ema-slow'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaSlow, scaleLin, '#ea580c', maWidth) + '</g>' +
       '<g class="cross-marker-layer" style="display:' + (layerVisibility['cross-marker'] ? 'inline' : 'none') + ';">' + markersLin + '</g>' +
+      vixLayerSvg +
       pillsLinSvg +
     '</g>' +
     '<!-- 對數座標圖層 -->' +
@@ -1402,6 +1510,7 @@ function renderDynamicSVG(rangeKey) {{
       '<g class="ema-fast-layer" style="display:' + (layerVisibility['ema-fast'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaFast, scaleLog, '#0d9488', maWidth) + '</g>' +
       '<g class="ema-slow-layer" style="display:' + (layerVisibility['ema-slow'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaSlow, scaleLog, '#ea580c', maWidth) + '</g>' +
       '<g class="cross-marker-layer" style="display:' + (layerVisibility['cross-marker'] ? 'inline' : 'none') + ';">' + markersLog + '</g>' +
+      vixLayerSvg +
       pillsLogSvg +
     '</g>' +
   '</svg>';
