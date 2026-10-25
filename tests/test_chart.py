@@ -258,7 +258,21 @@ class TestChart(unittest.TestCase):
             self.assertIn('getVixRegime', content)
             self.assertIn('currentSliceData', content)
             self.assertIn('VIX 恐慌指數', content)
-            self.assertIn('平台版本：v1.5.2', content)
+            self.assertIn(f'平台版本：{VERSION}', content)
+
+            # 4. 若系統有 node，執行語法檢查以防前端 JavaScript 語法錯誤 (SyntaxError)
+            import shutil
+            import subprocess
+            import re
+            if shutil.which("node"):
+                m = re.search(r"<script>(.*?)</script>", content, re.DOTALL)
+                self.assertIsNotNone(m, "報告中應包含主要 JavaScript 腳本")
+                js_code = m.group(1)
+                js_file = os.path.join(tmpdir, "check.js")
+                with open(js_file, "w", encoding="utf-8") as jf:
+                    jf.write(js_code)
+                res = subprocess.run(["node", "--check", js_file], capture_output=True, text=True)
+                self.assertEqual(res.returncode, 0, f"JavaScript 語法檢查失敗:\n{res.stderr}")
 
 
 if __name__ == "__main__":

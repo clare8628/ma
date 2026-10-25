@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.5.2"
+VERSION = "v1.5.3"
 
 # 擴充畫布寬度與高度以充分利用寬螢幕與兩側空間
 WIDTH = 1380
@@ -420,7 +420,7 @@ def _render_price_svg(
     <div style="font-size:13px;margin:6px 0 10px;color:#334155;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
       <label style="cursor:pointer;font-weight:600;color:#0f172a;background:#f1f5f9;padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1;">
         座標模式：
-        <select onchange="togglePriceScale(this.value)" style="border:none;background:transparent;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
+        <select id="price-scale-select" onchange="togglePriceScale(this.value)" style="border:none;background:transparent;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
           <option value="linear" selected>線性座標 (Linear)</option>
           <option value="log">對數座標 (Log Scale，長歷史推薦)</option>
         </select>
@@ -1601,21 +1601,22 @@ function renderDynamicSVG(rangeKey) {{
       '<g class="cross-marker-layer" style="display:' + (layerVisibility['cross-marker'] ? 'inline' : 'none') + ';">' + markersLog + '</g>' +
       vixLayerSvg +
       pillsLogSvg +
-    '</g>' +
-    var priceCrosshairSvg = '<g id="price-crosshair" style="display:none;pointer-events:none;">' +
-      '<line id="price-crosshair-line" x1="0" y1="' + CHART_MARGIN_TOP + '" x2="0" y2="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
-      '<circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />' +
-      '<circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />' +
-      '<circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />' +
-      '<circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />' +
-      '<circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />' +
-      '<g id="price-date-pill">' +
-        '<rect id="price-date-pill-bg" x="-42" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
-        '<text id="price-date-pill-text" x="0" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
-      '</g>' +
     '</g>';
 
-    priceSvgHtml += priceCrosshairSvg + '</svg>';
+  var priceCrosshairSvg = '<g id="price-crosshair" style="display:none;pointer-events:none;">' +
+    '<line id="price-crosshair-line" x1="0" y1="' + CHART_MARGIN_TOP + '" x2="0" y2="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
+    '<circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />' +
+    '<circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />' +
+    '<circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />' +
+    '<circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />' +
+    '<circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />' +
+    '<g id="price-date-pill">' +
+      '<rect id="price-date-pill-bg" x="-42" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
+      '<text id="price-date-pill-text" x="0" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
+    '</g>' +
+  '</g>';
+
+  priceSvgHtml += priceCrosshairSvg + '</svg>';
 
   var priceWrap = document.getElementById('price-chart-svg-wrap');
   if (priceWrap) priceWrap.innerHTML = priceSvgHtml;
@@ -1768,12 +1769,23 @@ function setPresetPeriod(presetKey) {{
   setChartRange(presetKey);
 }}
 
+var activeHoverIdx = null;
+var activeClientX = 0;
+var activeClientY = 0;
+
 function togglePriceScale(mode) {{
   currentScaleMode = mode;
   var pLin = document.getElementById('plot-linear');
   var pLog = document.getElementById('plot-log');
   if (pLin) pLin.style.display = mode === 'log' ? 'none' : 'inline';
   if (pLog) pLog.style.display = mode === 'log' ? 'inline' : 'none';
+
+  var scSel = document.getElementById('price-scale-select');
+  if (scSel && scSel.value !== mode) scSel.value = mode;
+
+  if (activeHoverIdx !== null && currentSliceData) {{
+    updateCrosshairAndTooltip(activeHoverIdx, activeClientX, activeClientY);
+  }}
 }}
 
 function toggleLayer(layerName, isChecked) {{
@@ -1816,6 +1828,7 @@ function filterEventsTable(startDate, endDate, forceChecked) {{
 }}
 
 function hideCrosshairs() {{
+  activeHoverIdx = null;
   var pCross = document.getElementById('price-crosshair');
   var rCross = document.getElementById('rsi-crosshair');
   var tt = document.getElementById('chart-tooltip');
@@ -1866,6 +1879,10 @@ function handleChartHover(chartType, evt) {{
   var ratio = (clampedX - CHART_MARGIN_LEFT) / CHART_WIDTH;
   var idx = Math.round(ratio * (currentSliceData.n - 1));
   idx = Math.max(0, Math.min(currentSliceData.n - 1, idx));
+
+  activeHoverIdx = idx;
+  activeClientX = clientX;
+  activeClientY = clientY;
 
   updateCrosshairAndTooltip(idx, clientX, clientY);
 }}
@@ -2075,14 +2092,19 @@ function initHoverEvents() {{
   }}
 }}
 
-// 頁面載入後自動啟動
-window.addEventListener('DOMContentLoaded', function() {{
+function bootChart() {{
   if (chartData) {{
     var initRange = chartData.default_range || '1y';
     setChartRange(initRange);
   }}
   initHoverEvents();
-}});
+}}
+
+if (document.readyState === 'loading') {{
+  document.addEventListener('DOMContentLoaded', bootChart);
+}} else {{
+  bootChart();
+}}
 </script>
 </head>
 <body>

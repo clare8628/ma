@@ -37,7 +37,12 @@
     - 實作跟隨游標的浮動資訊卡 (Tooltip)：滑移時即時顯示日期、TQQQ收盤價(含漲跌幅)、VIX恐慌指數(含情緒分級標籤)、短期EMA10/20、長期SMA200、RSI(14)及重大金融事件
     - 主圖上方加入即時動態指示狀態列 (Interactive Status Bar)，同步反應用戶游標位置之精確量化數值
     - 完美支援全歷史區間切換、線性/對數座標模式、圖層開關過濾以及行動端觸控操作
-  - 單元測試全面擴充 (41/41 通過，包含 Crosshair 游標導引、各指標高亮點與 Tooltip 前端互動斷言)
+  - [MAM-3 追加指示] 修復前端 JavaScript 語法錯誤與互動引擎 (v1.5.3)：
+    - 修正前端模板字串拼接處之 `SyntaxError`，解決導致整個頁面 JavaScript 無法載入的根本原因
+    - 確保滑鼠在圖表（主圖或副圖）滑動時，游標旁即刻浮現精緻的半透明資訊卡 (Tooltip) 與十字導引線
+    - 確保切換「對數座標 (Log Scale)」或在「1M / 1Y / ALL」不同時間區間跳轉時，動態重繪引擎毫秒級流暢反應
+    - 於單元測試中正式加入 Node.js 語法驗證（`node --check`）防護機制，徹底防範前端語法漏網之魚
+  - 單元測試全面擴充 (41/41 通過，包含 Crosshair 游標導引、各指標高亮點、Tooltip 前端互動斷言與 JS 語法檢查)
 
 測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (41/41 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。
