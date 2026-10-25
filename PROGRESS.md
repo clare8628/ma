@@ -21,7 +21,7 @@
 - [x] 版面左右兩側閒置空間充分利用（頁面最大寬度擴充至 1760px，SVG 畫布拓寬至 1600px，指標面板與表格自適應延展）
 - [x] 單元測試 35/35 通過 (含 indicators, rules_engine, signals, rebalance, chart 全面覆蓋，版本升級至 v1.4.0)
 
-- [x] [MAM-3] VIX 指數超過 45 抄底綜合判斷整合 (版本升級至 v1.5.0 ~ v1.5.1)
+- [x] [MAM-3] VIX 指數超過 45 抄底綜合判斷整合 (版本升級至 v1.5.0 ~ v1.5.2)
   - 新增 VIX 恐慌指數全歷史日線資料擷取與快取 (`^VIX` -> `state/cache/VIX.json`)，支援 `--vix-csv` 離線模式
   - 規則庫新增 `R0_vix_panic_bottom`（VIX ≥ 45 觸發 `BUY_DIP_PANIC` 恐慌抄底買進，設定為最高優先級，打破常規空頭限制）
   - 核心訊號引擎加入 `evaluate_vix_regime` 綜合評估模型（極度恐慌、恐慌警戒、中度波動、低波動平穩四級分級與策略指引）
@@ -32,7 +32,12 @@
     - 工具列新增「顯示 VIX 恐慌指標曲線」開關（支援 toggle 隨時隱藏/顯示）
     - 右側 Price Pills 加入最新 VIX 定位標籤，動態防重疊排列
     - 前端 JavaScript 重繪引擎全區間 (1M/3M/6M/1Y/2Y/5Y/10Y/ALL) 與線性/對數座標無縫即時連動
-  - 單元測試全面擴充 (40/40 通過，包含 VIX 抄底觸發、分級邏輯、資料對齊與主圖 VIX 曲線渲染測試)
+  - [MAM-3 追加指示] 滑鼠懸浮滑移即時檢視價格與 VIX 等精確數值 (v1.5.2)：
+    - 主圖與副圖加入即時十字導引線 (Crosshair) 與高亮焦點圓點 (Highlight Dots)
+    - 實作跟隨游標的浮動資訊卡 (Tooltip)：滑移時即時顯示日期、TQQQ收盤價(含漲跌幅)、VIX恐慌指數(含情緒分級標籤)、短期EMA10/20、長期SMA200、RSI(14)及重大金融事件
+    - 主圖上方加入即時動態指示狀態列 (Interactive Status Bar)，同步反應用戶游標位置之精確量化數值
+    - 完美支援全歷史區間切換、線性/對數座標模式、圖層開關過濾以及行動端觸控操作
+  - 單元測試全面擴充 (41/41 通過，包含 Crosshair 游標導引、各指標高亮點與 Tooltip 前端互動斷言)
 
-測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (40/40 通過)。
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (41/41 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。

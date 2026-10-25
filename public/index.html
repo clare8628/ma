@@ -161,6 +161,51 @@ body {
   color: #ffffff;
   box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
 }
+.chart-hover-bar {
+  font-size: 12.5px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 22px;
+}
+.chart-tooltip {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 240px;
+  max-width: 330px;
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.5;
+  transition: opacity 0.08s ease;
+}
+.chart-tooltip-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  margin-top: 6px;
+}
+.chart-tooltip-row-val {
+  font-weight: 700;
+  text-align: right;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+}
 footer {
   margin-top: 32px;
   padding: 16px 0;
@@ -195,6 +240,7 @@ var layerVisibility = {
 };
 
 var chartData = null;
+var currentSliceData = null;
 try {
   var el = document.getElementById('chart-data');
   if (el) chartData = JSON.parse(el.textContent);
@@ -207,6 +253,14 @@ function formatPrice(v) {
   if (v >= 100) return v.toFixed(0);
   if (v < 1) return v.toFixed(2);
   return v.toFixed(1);
+}
+
+function getVixRegime(v) {
+  if (v === null || v === undefined) return { label: '無資料', color: '#64748b', bg: '#f1f5f9' };
+  if (v >= 45) return { label: '🚨 極端恐慌抄底 (≥45)', color: '#b91c1c', bg: '#fee2e2' };
+  if (v >= 30) return { label: '⚠️ 恐慌警戒 (30~45)', color: '#c2410c', bg: '#ffedd5' };
+  if (v >= 20) return { label: '⚡ 中度波動 (20~30)', color: '#b45309', bg: '#fef3c7' };
+  return { label: '✅ 低波動平穩 (<20)', color: '#15803d', bg: '#dcfce7' };
 }
 
 function getSliceIndices(rangeKey) {
@@ -605,7 +659,20 @@ function renderDynamicSVG(rangeKey) {
       vixLayerSvg +
       pillsLogSvg +
     '</g>' +
-  '</svg>';
+    var priceCrosshairSvg = '<g id="price-crosshair" style="display:none;pointer-events:none;">' +
+      '<line id="price-crosshair-line" x1="0" y1="' + CHART_MARGIN_TOP + '" x2="0" y2="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
+      '<circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />' +
+      '<g id="price-date-pill">' +
+        '<rect id="price-date-pill-bg" x="-42" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
+        '<text id="price-date-pill-text" x="0" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
+      '</g>' +
+    '</g>';
+
+    priceSvgHtml += priceCrosshairSvg + '</svg>';
 
   var priceWrap = document.getElementById('price-chart-svg-wrap');
   if (priceWrap) priceWrap.innerHTML = priceSvgHtml;
@@ -690,6 +757,15 @@ function renderDynamicSVG(rangeKey) {
       '<text x="' + (xStart + 104) + '" y="' + (curRsiY + 4).toFixed(1) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">RSI ' + lastRsiVal.toFixed(1) + '</text>';
   }
 
+  var rsiCrosshairSvg = '<g id="rsi-crosshair" style="display:none;pointer-events:none;">' +
+    '<line id="rsi-crosshair-line" x1="0" y1="' + rsiPlotTop + '" x2="0" y2="' + (rsiPlotTop + rsiPlotHeight) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
+    '<circle id="rsi-dot" cx="0" cy="0" r="4.5" fill="#0f172a" stroke="#ffffff" stroke-width="1.5" />' +
+    '<g id="rsi-date-pill">' +
+      '<rect id="rsi-date-pill-bg" x="-42" y="' + (rsiPlotTop + rsiPlotHeight + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
+      '<text id="rsi-date-pill-text" x="0" y="' + (rsiPlotTop + rsiPlotHeight + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
+    '</g>' +
+  '</g>';
+
   var rsiTotalHeight = rsiPlotTop + rsiPlotHeight + CHART_MARGIN_BOTTOM;
   var rsiLineWidth = n > 1000 ? 1.2 : 1.6;
 
@@ -700,6 +776,7 @@ function renderDynamicSVG(rangeKey) {
     refLinesSvg +
     latestRsiSvg +
     buildPolyline(subRsi, scaleRsi, '#0f172a', rsiLineWidth) +
+    rsiCrosshairSvg +
   '</svg>';
 
   var rsiWrap = document.getElementById('rsi-chart-svg-wrap');
@@ -707,6 +784,24 @@ function renderDynamicSVG(rangeKey) {
 
   // 12. 更新重大金融事件時序紀錄表格 (若有勾選過濾)
   filterEventsTable(subDates[0], subDates[n - 1]);
+
+  // 13. 保存當前展示區間資料供滑鼠懸浮游標 (Crosshair / Tooltip) 即時計算使用
+  currentSliceData = {
+    dates: subDates,
+    close: subClose,
+    longSma: subLongSma,
+    emaFast: subEmaFast,
+    emaSlow: subEmaSlow,
+    rsi: subRsi,
+    vix: subVix,
+    xs: xs,
+    n: n,
+    scaleLin: scaleLin,
+    scaleLog: scaleLog,
+    scaleVix: scaleVix,
+    scaleRsi: scaleRsi
+  };
+  hideCrosshairs();
 }
 
 function setChartRange(rangeKey) {
@@ -777,12 +872,273 @@ function filterEventsTable(startDate, endDate, forceChecked) {
   }
 }
 
+function hideCrosshairs() {
+  var pCross = document.getElementById('price-crosshair');
+  var rCross = document.getElementById('rsi-crosshair');
+  var tt = document.getElementById('chart-tooltip');
+  if (pCross) pCross.style.display = 'none';
+  if (rCross) rCross.style.display = 'none';
+  if (tt) tt.style.display = 'none';
+
+  var hBar = document.getElementById('price-hover-bar');
+  if (hBar && chartData && currentSliceData && currentSliceData.n > 0) {
+    var n = currentSliceData.n;
+    var d = currentSliceData.dates[n - 1];
+    var c = currentSliceData.close[n - 1];
+    var v = (currentSliceData.vix && currentSliceData.vix.length > n - 1) ? currentSliceData.vix[n - 1] : null;
+    var r = (currentSliceData.rsi && currentSliceData.rsi.length > n - 1) ? currentSliceData.rsi[n - 1] : null;
+    var vInfo = getVixRegime(v);
+    hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">最新交易日 (' + d + ')：</span>' +
+      '<span>TQQQ 收盤 <b>$' + formatPrice(c) + '</b></span> • ' +
+      '<span>VIX 恐慌指數 <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
+      '<span>RSI(14) <b>' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + '</b></span>' +
+      '<span style="color:#64748b;margin-left:auto;font-size:11.5px;">（💡 在圖表任意處滑移可檢視歷史價格、VIX與均線精確數值）</span>';
+  }
+}
+
+function handleChartHover(chartType, evt) {
+  if (!currentSliceData || !currentSliceData.n) return;
+  var svgId = chartType === 'rsi' ? 'rsi-chart-svg' : 'price-chart-svg';
+  var svg = document.getElementById(svgId);
+  if (!svg) return;
+
+  var rect = svg.getBoundingClientRect();
+  if (rect.width <= 0) return;
+
+  var clientX = evt.clientX;
+  var clientY = evt.clientY;
+  if (evt.touches && evt.touches.length > 0) {
+    clientX = evt.touches[0].clientX;
+    clientY = evt.touches[0].clientY;
+  }
+
+  var svgX = ((clientX - rect.left) / rect.width) * CHART_SVG_WIDTH;
+
+  if (svgX < CHART_MARGIN_LEFT - 12 || svgX > CHART_MARGIN_LEFT + CHART_WIDTH + 12) {
+    hideCrosshairs();
+    return;
+  }
+
+  var clampedX = Math.max(CHART_MARGIN_LEFT, Math.min(CHART_MARGIN_LEFT + CHART_WIDTH, svgX));
+  var ratio = (clampedX - CHART_MARGIN_LEFT) / CHART_WIDTH;
+  var idx = Math.round(ratio * (currentSliceData.n - 1));
+  idx = Math.max(0, Math.min(currentSliceData.n - 1, idx));
+
+  updateCrosshairAndTooltip(idx, clientX, clientY);
+}
+
+function updateCrosshairAndTooltip(idx, clientX, clientY) {
+  if (!currentSliceData || idx < 0 || idx >= currentSliceData.n) return;
+
+  var d = currentSliceData.dates[idx];
+  var c = currentSliceData.close[idx];
+  var f = currentSliceData.emaFast[idx];
+  var s = currentSliceData.emaSlow[idx];
+  var l = currentSliceData.longSma[idx];
+  var v = (currentSliceData.vix && currentSliceData.vix.length > idx) ? currentSliceData.vix[idx] : null;
+  var r = (currentSliceData.rsi && currentSliceData.rsi.length > idx) ? currentSliceData.rsi[idx] : null;
+  var xPos = currentSliceData.xs[idx];
+
+  var scaleFn = currentScaleMode === 'log' ? currentSliceData.scaleLog : currentSliceData.scaleLin;
+
+  // 1. 更新主圖 Crosshair
+  var pCross = document.getElementById('price-crosshair');
+  if (pCross) {
+    pCross.style.display = 'inline';
+    var pLine = document.getElementById('price-crosshair-line');
+    if (pLine) {
+      pLine.setAttribute('x1', xPos.toFixed(1));
+      pLine.setAttribute('x2', xPos.toFixed(1));
+    }
+
+    function setDot(dotId, val, customScale, isVisible) {
+      var dot = document.getElementById(dotId);
+      if (!dot) return;
+      if (val === null || val === undefined || isVisible === false) {
+        dot.style.display = 'none';
+        return;
+      }
+      var sf = customScale || scaleFn;
+      var y = sf(val);
+      if (y === null || isNaN(y)) {
+        dot.style.display = 'none';
+      } else {
+        dot.style.display = 'inline';
+        dot.setAttribute('cx', xPos.toFixed(1));
+        dot.setAttribute('cy', y.toFixed(1));
+      }
+    }
+
+    setDot('price-dot-close', c, null, true);
+    setDot('price-dot-fast', f, null, layerVisibility['ema-fast']);
+    setDot('price-dot-slow', s, null, layerVisibility['ema-slow']);
+    setDot('price-dot-long', l, null, true);
+    setDot('price-dot-vix', v, currentSliceData.scaleVix, layerVisibility['vix-line']);
+
+    var pDateBg = document.getElementById('price-date-pill-bg');
+    var pDateText = document.getElementById('price-date-pill-text');
+    if (pDateBg && pDateText) {
+      pDateBg.setAttribute('x', (xPos - 42).toFixed(1));
+      pDateText.setAttribute('x', xPos.toFixed(1));
+      pDateText.textContent = d;
+    }
+  }
+
+  // 2. 更新副圖 Crosshair
+  var rCross = document.getElementById('rsi-crosshair');
+  if (rCross) {
+    rCross.style.display = 'inline';
+    var rLine = document.getElementById('rsi-crosshair-line');
+    if (rLine) {
+      rLine.setAttribute('x1', xPos.toFixed(1));
+      rLine.setAttribute('x2', xPos.toFixed(1));
+    }
+    var rDot = document.getElementById('rsi-dot');
+    if (rDot) {
+      if (r !== null && r !== undefined && currentSliceData.scaleRsi) {
+        var ry = currentSliceData.scaleRsi(r);
+        if (ry !== null && !isNaN(ry)) {
+          rDot.style.display = 'inline';
+          rDot.setAttribute('cx', xPos.toFixed(1));
+          rDot.setAttribute('cy', ry.toFixed(1));
+        } else {
+          rDot.style.display = 'none';
+        }
+      } else {
+        rDot.style.display = 'none';
+      }
+    }
+    var rDateBg = document.getElementById('rsi-date-pill-bg');
+    var rDateText = document.getElementById('rsi-date-pill-text');
+    if (rDateBg && rDateText) {
+      rDateBg.setAttribute('x', (xPos - 42).toFixed(1));
+      rDateText.setAttribute('x', xPos.toFixed(1));
+      rDateText.textContent = d;
+    }
+  }
+
+  // 3. 漲跌幅計算
+  var pctStr = '';
+  var pctColor = '#64748b';
+  if (idx > 0 && currentSliceData.close[idx - 1] !== null && c !== null) {
+    var prevC = currentSliceData.close[idx - 1];
+    var pct = ((c - prevC) / prevC) * 100;
+    pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+    pctColor = pct >= 0 ? '#16a34a' : '#dc2626';
+  }
+
+  // 4. VIX 狀態與顏色
+  var vInfo = getVixRegime(v);
+
+  // 5. RSI 顏色與標籤
+  var rsiColor = '#0f172a';
+  var rsiTag = '';
+  if (r !== null && r !== undefined) {
+    if (r >= 70) { rsiColor = '#dc2626'; rsiTag = '過熱'; }
+    else if (r >= 65) { rsiColor = '#f59e0b'; rsiTag = '超買'; }
+    else if (r <= 45) { rsiColor = '#dc2626'; rsiTag = '弱勢'; }
+    else { rsiColor = '#16a34a'; rsiTag = '健康'; }
+  }
+
+  // 6. 查找當日事件
+  var evHtml = '';
+  if (chartData.events) {
+    var ev = null;
+    for (var k = 0; k < chartData.events.length; k++) {
+      if (chartData.events[k].date === d) { ev = chartData.events[k]; break; }
+    }
+    if (ev) {
+      evHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed #e2e8f0;font-size:11px;color:#b45309;">' +
+        '📌 <b>' + (ev.title || '金融事件') + '</b>' + (ev.description ? '：' + ev.description : '') +
+        '</div>';
+    }
+  }
+
+  // 7. 更新浮動 Tooltip 內容與定位
+  var tt = document.getElementById('chart-tooltip');
+  if (tt) {
+    tt.innerHTML = '<div style="font-weight:700;font-size:13px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;display:flex;justify-content:space-between;align-items:center;">' +
+      '<span>📅 ' + d + '</span>' +
+      (pctStr ? '<span style="font-size:12px;font-weight:700;color:' + pctColor + ';">' + pctStr + '</span>' : '') +
+      '</div>' +
+      '<div class="chart-tooltip-grid">' +
+        '<span style="color:#2563eb;font-weight:600;">■ TQQQ 收盤：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#2563eb;">$' + formatPrice(c) + '</span>' +
+
+        '<span style="color:#e11d48;font-weight:600;">■ VIX 恐慌指數：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:' + vInfo.color + ';">' + formatPrice(v) + ' <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:' + vInfo.bg + ';color:' + vInfo.color + ';">' + vInfo.label + '</span></span>' +
+
+        '<span style="color:#0d9488;font-weight:600;">■ EMA ' + chartData.ema_fast_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#0d9488;">$' + formatPrice(f) + '</span>' +
+
+        '<span style="color:#ea580c;font-weight:600;">■ EMA ' + chartData.ema_slow_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#ea580c;">$' + formatPrice(s) + '</span>' +
+
+        '<span style="color:#9333ea;font-weight:600;">■ SMA ' + chartData.long_sma_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#9333ea;">$' + formatPrice(l) + '</span>' +
+
+        '<span style="color:#0f172a;font-weight:600;">■ RSI(14)：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:' + rsiColor + ';">' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + (rsiTag ? ' (' + rsiTag + ')' : '') + '</span>' +
+      '</div>' +
+      evHtml;
+
+    tt.style.display = 'block';
+
+    var ttW = tt.offsetWidth || 240;
+    var ttH = tt.offsetHeight || 220;
+    var posX = clientX + 16;
+    var posY = clientY + 16;
+    if (posX + ttW > window.innerWidth - 12) {
+      posX = clientX - ttW - 16;
+    }
+    if (posY + ttH > window.innerHeight - 12) {
+      posY = clientY - ttH - 16;
+    }
+    tt.style.left = Math.max(8, posX) + 'px';
+    tt.style.top = Math.max(8, posY) + 'px';
+  }
+
+  // 8. 同步更新主圖上方指示列
+  var hBar = document.getElementById('price-hover-bar');
+  if (hBar) {
+    hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">' + d + '：</span>' +
+      '<span>TQQQ <b>$' + formatPrice(c) + '</b> <span style="color:' + pctColor + ';">(' + (pctStr || '基準') + ')</span></span> • ' +
+      '<span>VIX <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
+      '<span>EMA10 <b>$' + formatPrice(f) + '</b></span> • ' +
+      '<span>EMA20 <b>$' + formatPrice(s) + '</b></span> • ' +
+      '<span>SMA200 <b>$' + formatPrice(l) + '</b></span> • ' +
+      '<span>RSI <b>' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + '</b></span>';
+  }
+}
+
+function initHoverEvents() {
+  var pWrap = document.getElementById('price-chart-svg-wrap');
+  var rWrap = document.getElementById('rsi-chart-svg-wrap');
+
+  if (pWrap) {
+    pWrap.addEventListener('mousemove', function(e) { handleChartHover('price', e); });
+    pWrap.addEventListener('mouseleave', function() { hideCrosshairs(); });
+    pWrap.addEventListener('touchmove', function(e) { handleChartHover('price', e); }, { passive: true });
+    pWrap.addEventListener('touchstart', function(e) { handleChartHover('price', e); }, { passive: true });
+    pWrap.addEventListener('touchend', function() { hideCrosshairs(); });
+  }
+
+  if (rWrap) {
+    rWrap.addEventListener('mousemove', function(e) { handleChartHover('rsi', e); });
+    rWrap.addEventListener('mouseleave', function() { hideCrosshairs(); });
+    rWrap.addEventListener('touchmove', function(e) { handleChartHover('rsi', e); }, { passive: true });
+    rWrap.addEventListener('touchstart', function(e) { handleChartHover('rsi', e); }, { passive: true });
+    rWrap.addEventListener('touchend', function() { hideCrosshairs(); });
+  }
+}
+
 // 頁面載入後自動啟動
 window.addEventListener('DOMContentLoaded', function() {
   if (chartData) {
     var initRange = chartData.default_range || '1y';
     setChartRange(initRange);
   }
+  initHoverEvents();
 });
 </script>
 </head>
@@ -793,8 +1149,8 @@ window.addEventListener('DOMContentLoaded', function() {
       <div style="font-size:13px;color:#64748b;margin-top:2px;">以大盤長天期均線與高槓桿標的雙 EMA 觸發之多空輪換架構</div>
     </div>
     <div class="version-badge-group">
-      <span class="badge-version">平台版本：v1.5.1</span>
-      <span class="badge-timestamp">產出時間戳記：2026-10-25 15:11:02</span>
+      <span class="badge-version">平台版本：v1.5.2</span>
+      <span class="badge-timestamp">產出時間戳記：2026-10-25 16:00:55</span>
       <span class="badge-inception">全歷史時間軸：2010-02-11 至 2026-10-23（自 TQQQ 成立開始）</span>
     </div>
   </div>
@@ -1044,7 +1400,11 @@ window.addEventListener('DOMContentLoaded', function() {
       <span style="color:#64748b;font-size:12px;margin-left:auto;">（可自由切換區間以避免擁擠 • 右側標記最新均線與 VIX 定位）</span>
     </div>
     
-    <div id="price-chart-svg-wrap" style="overflow-x:auto;">
+    <div id="price-hover-bar" class="chart-hover-bar">
+      <span style="color:#2563eb;font-weight:700;">💡 互動指示：</span>
+      <span>滑鼠在圖表任意處滑移可即時檢視該交易日之收盤價格、VIX恐慌指數、均線與動能指標精確數值</span>
+    </div>
+    <div id="price-chart-svg-wrap" class="chart-wrap" style="position:relative;overflow-x:auto;">
       <svg id="price-chart-svg" viewBox="0 0 1600 564" width="100%" height="564" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
         
     <text x="56" y="18" font-size="13" fill="#2563eb">■ TQQQ 收盤價</text>
@@ -1083,6 +1443,22 @@ window.addEventListener('DOMContentLoaded', function() {
           <g class="vix-line-layer"><line x1="56" y1="294.0" x2="1436" y2="294.0" stroke="#fda4af" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" /><text x="1428" y="290.0" font-size="10" fill="#be123c" font-weight="600" text-anchor="end">VIX 45 抄底門檻</text><text x="1428" y="461.3" font-size="9" fill="#fda4af" text-anchor="end">VIX 20</text><text x="1428" y="395.6" font-size="9" fill="#fda4af" text-anchor="end">VIX 30</text><text x="1428" y="198.4" font-size="9" fill="#fda4af" text-anchor="end">VIX 60</text><polyline points="56.0,476.0 61.5,482.1 67.0,486.0 72.5,481.8 78.0,478.5 83.5,478.6 89.0,475.1 94.5,476.9 100.0,464.9 105.5,471.4 111.0,461.6 116.5,464.3 122.0,474.1 127.5,476.2 133.0,474.6 138.5,458.3 144.0,459.4 149.5,442.6 155.0,427.5 160.5,434.2 166.0,416.1 171.5,435.7 177.0,454.9 182.5,467.7 188.0,476.8 193.5,482.3 198.9,476.4 204.4,480.7 209.9,484.0 215.4,486.0 220.9,488.4 226.4,480.2 231.9,478.5 237.4,486.1 242.9,492.1 248.4,486.3 253.9,481.3 259.4,481.4 264.9,473.9 270.4,478.9 275.9,491.7 281.4,497.2 286.9,497.7 292.4,501.2 297.9,500.3 303.4,496.4 308.9,495.5 314.4,491.5 319.9,494.4 325.4,491.8 330.9,492.8 336.4,488.6 341.9,488.2 347.4,494.5 352.9,490.4 358.4,484.7 363.9,479.6 369.4,485.6 374.9,485.5 380.4,457.7 385.9,478.7 391.4,486.9 396.9,484.0 402.4,483.6 407.9,482.3 413.4,482.3 418.9,478.8 424.4,475.1 429.9,482.3 435.4,471.4 440.9,467.2 446.4,446.7 451.9,455.9 457.4,475.6 462.9,472.8 468.4,473.7 473.8,452.9 479.3,454.3 484.8,456.4 490.3,460.8 495.8,456.8 501.3,464.3 506.8,451.6 512.3,461.2 517.8,471.9 523.3,467.3 528.8,459.2 534.3,448.8 539.8,434.8 545.3,450.7 550.8,433.6 556.3,395.9 561.8,422.1 567.3,425.9 572.8,430.5 578.3,410.4 583.8,411.0 589.3,435.2 594.8,442.7 600.3,424.8 605.8,431.6 611.3,413.7 616.8,417.9 622.3,412.6 627.8,423.3 633.3,409.4 638.8,385.7 644.3,388.6 649.8,423.8 655.3,428.5 660.8,432.9 666.3,430.9 671.8,420.3 677.3,451.5 682.8,461.6 688.3,463.3 693.8,464.1 699.3,469.1 704.8,470.3 710.3,471.8 715.8,474.8 721.3,465.7 726.8,461.6 732.3,465.4 737.8,462.8 743.3,466.8 748.7,471.3 754.2,472.5 759.7,466.1 765.2,478.7 770.7,478.1 776.2,469.5 781.7,475.5 787.2,475.4 792.7,477.5 798.2,476.8 803.7,468.9 809.2,471.5 814.7,472.3 820.2,476.3 825.7,468.6 831.2,472.6 836.7,471.0 842.2,475.1 847.7,479.6 853.2,480.0 858.7,477.9 864.2,482.7 869.7,486.3 875.2,489.0 880.7,484.2 886.2,486.1 891.7,484.2 897.2,488.5 902.7,448.4 908.2,465.4 913.7,459.1 919.2,443.7 924.7,462.0 930.2,473.5 935.7,483.3 941.2,481.9 946.7,468.5 952.2,481.9 957.7,476.2 963.2,461.6 968.7,467.3 974.2,465.6 979.7,468.7 985.2,473.7 990.7,481.6 996.2,480.7 1001.7,483.6 1007.2,487.4 1012.7,483.7 1018.2,478.7 1023.6,485.6 1029.1,490.9 1034.6,476.9 1040.1,481.3 1045.6,486.7 1051.1,479.8 1056.6,466.4 1062.1,467.2 1067.6,477.7 1073.1,480.4 1078.6,466.8 1084.1,467.6 1089.6,467.0 1095.1,470.0 1100.6,453.9 1106.1,477.4 1111.6,484.6 1117.1,485.5 1122.6,481.3 1128.1,485.8 1133.6,490.2 1139.1,491.8 1144.6,488.1 1150.1,489.3 1155.6,494.1 1161.1,493.6 1166.6,496.1 1172.1,489.9 1177.6,485.6 1183.1,491.9 1188.6,484.5 1194.1,490.3 1199.6,485.6 1205.1,488.2 1210.6,489.8 1216.1,494.4 1221.6,494.9 1227.1,491.7 1232.6,482.3 1238.1,489.8 1243.6,495.6 1249.1,494.2 1254.6,486.4 1260.1,481.5 1265.6,472.5 1271.1,485.6 1276.6,477.3 1282.1,476.7 1287.6,473.3 1293.1,488.3 1298.5,492.4 1304.0,492.0 1309.5,496.3 1315.0,490.0 1320.5,486.7 1326.0,492.0 1331.5,484.1 1337.0,484.3 1342.5,482.3 1348.0,482.0 1353.5,489.1 1359.0,487.7 1364.5,491.1 1370.0,490.6 1375.5,488.4 1381.0,492.2 1386.5,489.8 1392.0,489.4 1397.5,478.9 1403.0,481.5 1408.5,458.4 1414.0,468.5 1419.5,476.0 1425.0,480.1 1430.5,464.7 1436.0,461.9" fill="none" stroke="#e11d48" stroke-width="1.6" /></g>
           <path d="M 1436 156.5 L 1452 156.5 L 1460 156.5" fill="none" stroke="#ea580c" stroke-width="1.2" stroke-dasharray="2,2" /><rect x="1462" y="147.5" width="112" height="18" rx="4" fill="#ea580c" /><text x="1518" y="160.5" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">EMA20 73.8</text><path d="M 1436 173.6 L 1452 176.5 L 1460 176.5" fill="none" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="2,2" /><rect x="1462" y="167.5" width="112" height="18" rx="4" fill="#0d9488" /><text x="1518" y="180.5" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">EMA10 71.5</text><path d="M 1436 215.4 L 1452 215.4 L 1460 215.4" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="2,2" /><rect x="1462" y="206.4" width="112" height="18" rx="4" fill="#2563eb" /><text x="1518" y="219.4" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">TQQQ 66.3</text><path d="M 1436 224.5 L 1452 235.4 L 1460 235.4" fill="none" stroke="#9333ea" stroke-width="1.2" stroke-dasharray="2,2" /><rect x="1462" y="226.4" width="112" height="18" rx="4" fill="#9333ea" /><text x="1518" y="239.4" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">SMA200 65.2</text><path d="M 1436 461.9 L 1452 461.9 L 1460 461.9" fill="none" stroke="#e11d48" stroke-width="1.2" stroke-dasharray="2,2" /><rect x="1462" y="452.9" width="112" height="18" rx="4" fill="#e11d48" /><text x="1518" y="465.9" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">VIX 19.5</text>
         </g>
+
+        
+        <!-- 游標垂直導引線與高亮焦點標記 (滑鼠滑移時顯示價格與VIX) -->
+        <g id="price-crosshair" style="display:none;pointer-events:none;">
+          <line id="price-crosshair-line" x1="0" y1="64" x2="0" y2="524" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />
+          <circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />
+          <g id="price-date-pill">
+            <rect id="price-date-pill-bg" x="-42" y="526" width="84" height="18" rx="4" fill="#0f172a" />
+            <text id="price-date-pill-text" x="0" y="539" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>
+          </g>
+        </g>
+    
       </svg>
     </div>
     
@@ -1092,7 +1468,7 @@ window.addEventListener('DOMContentLoaded', function() {
   <div class="card">
     <h3 style="margin-top:0;font-size:18px;">RSI(14) 震盪指標</h3>
     
-    <div id="rsi-chart-svg-wrap" style="overflow-x:auto;">
+    <div id="rsi-chart-svg-wrap" class="chart-wrap" style="position:relative;overflow-x:auto;">
       <svg id="rsi-chart-svg" viewBox="0 0 1600 316" width="100%" height="316" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
         <text x="56" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14) 震盪指標</text>
         <line x1="56" y1="276.0" x2="1436" y2="276.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="280.0" font-size="11" fill="#475569" text-anchor="end">0</text><text x="1444" y="280.0" font-size="11" fill="#94a3b8" text-anchor="start">0</text><line x1="56" y1="228.0" x2="1436" y2="228.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="232.0" font-size="11" fill="#475569" text-anchor="end">20</text><text x="1444" y="232.0" font-size="11" fill="#94a3b8" text-anchor="start">20</text><line x1="56" y1="180.0" x2="1436" y2="180.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="184.0" font-size="11" fill="#475569" text-anchor="end">40</text><text x="1444" y="184.0" font-size="11" fill="#94a3b8" text-anchor="start">40</text><line x1="56" y1="132.0" x2="1436" y2="132.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="136.0" font-size="11" fill="#475569" text-anchor="end">60</text><text x="1444" y="136.0" font-size="11" fill="#94a3b8" text-anchor="start">60</text><line x1="56" y1="84.0" x2="1436" y2="84.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="88.0" font-size="11" fill="#475569" text-anchor="end">80</text><text x="1444" y="88.0" font-size="11" fill="#94a3b8" text-anchor="start">80</text><line x1="56" y1="36.0" x2="1436" y2="36.0" stroke="#e2e8f0" stroke-width="1" /><text x="48" y="40.0" font-size="11" fill="#475569" text-anchor="end">100</text><text x="1444" y="40.0" font-size="11" fill="#94a3b8" text-anchor="start">100</text>
@@ -1100,6 +1476,17 @@ window.addEventListener('DOMContentLoaded', function() {
         <line x1="56" y1="108.0" x2="1436" y2="108.0" stroke="#dc2626" stroke-width="1" stroke-dasharray="4,3" /><text x="1444" y="111.0" font-size="10" fill="#dc2626">70 過熱止盈</text><line x1="56" y1="120.0" x2="1436" y2="120.0" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,3" /><text x="1444" y="123.0" font-size="10" fill="#f59e0b">65 超買線</text><line x1="56" y1="144.0" x2="1436" y2="144.0" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" /><text x="1444" y="147.0" font-size="10" fill="#64748b">55 中線</text><line x1="56" y1="156.0" x2="1436" y2="156.0" stroke="#0ea5e9" stroke-width="1" stroke-dasharray="4,3" /><text x="1444" y="159.0" font-size="10" fill="#0ea5e9">50 進場下緣</text><line x1="56" y1="168.0" x2="1436" y2="168.0" stroke="#dc2626" stroke-width="1" stroke-dasharray="4,3" /><text x="1444" y="171.0" font-size="10" fill="#dc2626">45 避險</text>
         <path d="M 1436 191.4 L 1504 191.4" fill="none" stroke="#0f172a" stroke-width="1.2" /><rect x="1506" y="182.4" width="68" height="18" rx="4" fill="#0f172a" /><text x="1540" y="195.4" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">RSI 35.2</text>
         <polyline points="56.0,138.9 61.5,128.9 67.0,114.4 72.5,108.9 78.0,105.9 83.5,129.7 89.0,125.7 94.5,121.8 100.0,148.6 105.5,142.6 111.0,161.7 116.5,164.7 122.0,145.4 127.5,148.2 133.0,148.9 138.5,168.4 144.0,168.2 149.5,175.2 155.0,184.0 160.5,177.9 166.0,193.4 171.5,186.0 177.0,163.5 182.5,158.4 188.0,151.2 193.5,145.2 198.9,148.2 204.4,141.5 209.9,139.4 215.4,140.8 220.9,137.0 226.4,139.9 231.9,138.5 237.4,134.3 242.9,139.4 248.4,165.5 253.9,170.8 259.4,168.2 264.9,186.0 270.4,169.0 275.9,155.0 281.4,150.4 286.9,145.5 292.4,143.3 297.9,143.7 303.4,150.7 308.9,154.0 314.4,165.1 319.9,167.9 325.4,156.7 330.9,145.4 336.4,144.1 341.9,153.3 347.4,140.7 352.9,139.7 358.4,142.8 363.9,159.7 369.4,154.7 374.9,157.0 380.4,183.6 385.9,165.3 391.4,156.0 396.9,152.2 402.4,146.8 407.9,136.4 413.4,132.9 418.9,142.7 424.4,159.9 429.9,151.3 435.4,169.9 440.9,185.5 446.4,195.4 451.9,173.1 457.4,165.5 462.9,169.5 468.4,166.8 473.8,183.3 479.3,181.7 484.8,182.4 490.3,173.9 495.8,177.2 501.3,167.1 506.8,178.2 512.3,166.1 517.8,151.7 523.3,163.4 528.8,166.6 534.3,165.3 539.8,175.3 545.3,159.1 550.8,162.1 556.3,175.9 561.8,162.4 567.3,162.4 572.8,162.7 578.3,178.6 583.8,183.6 589.3,170.9 594.8,165.5 600.3,178.0 605.8,180.4 611.3,193.8 616.8,181.3 622.3,186.1 627.8,179.7 633.3,195.1 638.8,204.6 644.3,207.8 649.8,178.9 655.3,169.0 660.8,168.4 666.3,163.4 671.8,163.0 677.3,140.1 682.8,135.3 688.3,134.2 693.8,126.8 699.3,114.8 704.8,106.7 710.3,104.1 715.8,97.3 721.3,101.7 726.8,107.7 732.3,98.2 737.8,106.7 743.3,96.2 748.7,96.0 754.2,112.0 759.7,107.9 765.2,102.2 770.7,96.8 776.2,100.2 781.7,92.7 787.2,82.8 792.7,84.8 798.2,75.5 803.7,74.4 809.2,90.6 814.7,85.7 820.2,82.3 825.7,108.1 831.2,114.7 836.7,123.4 842.2,112.0 847.7,110.7 853.2,108.0 858.7,97.2 864.2,99.1 869.7,94.2 875.2,92.2 880.7,88.8 886.2,86.2 891.7,91.6 897.2,102.6 902.7,166.2 908.2,153.9 913.7,163.0 919.2,176.9 924.7,153.3 930.2,148.8 935.7,130.3 941.2,145.5 946.7,152.6 952.2,139.1 957.7,140.0 963.2,163.0 968.7,165.8 974.2,161.0 979.7,169.1 985.2,153.7 990.7,144.2 996.2,154.1 1001.7,164.5 1007.2,156.2 1012.7,166.6 1018.2,165.2 1023.6,155.0 1029.1,153.1 1034.6,165.2 1040.1,158.2 1045.6,159.8 1051.1,170.1 1056.6,178.2 1062.1,177.7 1067.6,164.6 1073.1,167.8 1078.6,178.6 1084.1,184.4 1089.6,185.9 1095.1,190.5 1100.6,199.2 1106.1,176.7 1111.6,171.9 1117.1,160.3 1122.6,140.6 1128.1,147.0 1133.6,149.6 1139.1,142.6 1144.6,145.0 1150.1,147.7 1155.6,142.7 1161.1,134.8 1166.6,136.4 1172.1,138.2 1177.6,154.7 1183.1,156.6 1188.6,162.9 1194.1,159.8 1199.6,168.7 1205.1,162.6 1210.6,161.6 1216.1,148.4 1221.6,155.4 1227.1,155.1 1232.6,168.2 1238.1,165.7 1243.6,153.1 1249.1,151.4 1254.6,152.6 1260.1,156.1 1265.6,168.9 1271.1,158.3 1276.6,167.3 1282.1,174.1 1287.6,173.9 1293.1,152.7 1298.5,146.1 1304.0,120.3 1309.5,114.3 1315.0,127.3 1320.5,127.7 1326.0,123.9 1331.5,139.3 1337.0,137.5 1342.5,135.0 1348.0,131.8 1353.5,122.1 1359.0,114.2 1364.5,110.3 1370.0,115.1 1375.5,138.4 1381.0,133.7 1386.5,144.1 1392.0,148.9 1397.5,172.7 1403.0,174.0 1408.5,194.8 1414.0,181.0 1419.5,181.8 1425.0,169.7 1430.5,191.1 1436.0,191.4" fill="none" stroke="#0f172a" stroke-width="1.6" />
+        
+        <!-- 游標垂直導引線與高亮焦點標記 (RSI副圖同步) -->
+        <g id="rsi-crosshair" style="display:none;pointer-events:none;">
+          <line id="rsi-crosshair-line" x1="0" y1="36" x2="0" y2="276" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />
+          <circle id="rsi-dot" cx="0" cy="0" r="4.5" fill="#0f172a" stroke="#ffffff" stroke-width="1.5" />
+          <g id="rsi-date-pill">
+            <rect id="rsi-date-pill-bg" x="-42" y="278" width="84" height="18" rx="4" fill="#0f172a" />
+            <text id="rsi-date-pill-text" x="0" y="291" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>
+          </g>
+        </g>
+    
       </svg>
     </div>
     
@@ -1335,6 +1722,9 @@ window.addEventListener('DOMContentLoaded', function() {
     
 
   <footer>
-    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.5.1 • 報表時間戳記：2026-10-25 15:11:02 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
+    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.5.2 • 報表時間戳記：2026-10-25 16:00:55 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
+
+  <!-- 滑鼠懸浮浮動資訊卡 (Tooltip，呈現當日價格、VIX指數等精確數值) -->
+  <div id="chart-tooltip" class="chart-tooltip"></div>
 </body></html>

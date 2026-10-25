@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.5.1"
+VERSION = "v1.5.2"
 
 # 擴充畫布寬度與高度以充分利用寬螢幕與兩側空間
 WIDTH = 1380
@@ -447,9 +447,29 @@ def _render_price_svg(
     line_width = 1.4 if len(dates) > 1000 else 1.8
     ma_width = 1.2 if len(dates) > 1000 else 1.4
 
+    price_crosshair_svg = f'''
+        <!-- 游標垂直導引線與高亮焦點標記 (滑鼠滑移時顯示價格與VIX) -->
+        <g id="price-crosshair" style="display:none;pointer-events:none;">
+          <line id="price-crosshair-line" x1="0" y1="{plot_top}" x2="0" y2="{plot_top + plot_height}" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />
+          <circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />
+          <g id="price-date-pill">
+            <rect id="price-date-pill-bg" x="-42" y="{plot_top + plot_height + 2}" width="84" height="18" rx="4" fill="#0f172a" />
+            <text id="price-date-pill-text" x="0" y="{plot_top + plot_height + 15}" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>
+          </g>
+        </g>
+    '''
+
     return f'''
     {toggle_bar}
-    <div id="price-chart-svg-wrap" style="overflow-x:auto;">
+    <div id="price-hover-bar" class="chart-hover-bar">
+      <span style="color:#2563eb;font-weight:700;">💡 互動指示：</span>
+      <span>滑鼠在圖表任意處滑移可即時檢視該交易日之收盤價格、VIX恐慌指數、均線與動能指標精確數值</span>
+    </div>
+    <div id="price-chart-svg-wrap" class="chart-wrap" style="position:relative;overflow-x:auto;">
       <svg id="price-chart-svg" viewBox="0 0 {SVG_WIDTH} {total_height}" width="100%" height="{total_height}" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
         {labels}
         {x_axis_svg}
@@ -478,6 +498,8 @@ def _render_price_svg(
           {vix_layer_svg}
           {pills_log_svg}
         </g>
+
+        {price_crosshair_svg}
       </svg>
     </div>
     '''
@@ -528,8 +550,20 @@ def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
     total_height = plot_top + RSI_PLOT_HEIGHT + MARGIN_BOTTOM
     line_width = 1.2 if len(dates) > 1000 else 1.6
 
+    rsi_crosshair_svg = f'''
+        <!-- 游標垂直導引線與高亮焦點標記 (RSI副圖同步) -->
+        <g id="rsi-crosshair" style="display:none;pointer-events:none;">
+          <line id="rsi-crosshair-line" x1="0" y1="{plot_top}" x2="0" y2="{plot_top + plot_height}" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />
+          <circle id="rsi-dot" cx="0" cy="0" r="4.5" fill="#0f172a" stroke="#ffffff" stroke-width="1.5" />
+          <g id="rsi-date-pill">
+            <rect id="rsi-date-pill-bg" x="-42" y="{plot_top + plot_height + 2}" width="84" height="18" rx="4" fill="#0f172a" />
+            <text id="rsi-date-pill-text" x="0" y="{plot_top + plot_height + 15}" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>
+          </g>
+        </g>
+    '''
+
     return f'''
-    <div id="rsi-chart-svg-wrap" style="overflow-x:auto;">
+    <div id="rsi-chart-svg-wrap" class="chart-wrap" style="position:relative;overflow-x:auto;">
       <svg id="rsi-chart-svg" viewBox="0 0 {SVG_WIDTH} {total_height}" width="100%" height="{total_height}" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
         <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14) 震盪指標</text>
         {y_axis_svg}
@@ -537,6 +571,7 @@ def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
         {''.join(ref_lines)}
         {latest_rsi_svg}
         {_polyline(xs, y_rsi, "#0f172a", line_width)}
+        {rsi_crosshair_svg}
       </svg>
     </div>
     '''
@@ -1069,6 +1104,51 @@ body {{
   color: #ffffff;
   box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
 }}
+.chart-hover-bar {{
+  font-size: 12.5px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 22px;
+}}
+.chart-tooltip {{
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 240px;
+  max-width: 330px;
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.5;
+  transition: opacity 0.08s ease;
+}}
+.chart-tooltip-grid {{
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  margin-top: 6px;
+}}
+.chart-tooltip-row-val {{
+  font-weight: 700;
+  text-align: right;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+}}
 footer {{
   margin-top: 32px;
   padding: 16px 0;
@@ -1103,6 +1183,7 @@ var layerVisibility = {{
 }};
 
 var chartData = null;
+var currentSliceData = null;
 try {{
   var el = document.getElementById('chart-data');
   if (el) chartData = JSON.parse(el.textContent);
@@ -1115,6 +1196,14 @@ function formatPrice(v) {{
   if (v >= 100) return v.toFixed(0);
   if (v < 1) return v.toFixed(2);
   return v.toFixed(1);
+}}
+
+function getVixRegime(v) {{
+  if (v === null || v === undefined) return {{ label: '無資料', color: '#64748b', bg: '#f1f5f9' }};
+  if (v >= 45) return {{ label: '🚨 極端恐慌抄底 (≥45)', color: '#b91c1c', bg: '#fee2e2' }};
+  if (v >= 30) return {{ label: '⚠️ 恐慌警戒 (30~45)', color: '#c2410c', bg: '#ffedd5' }};
+  if (v >= 20) return {{ label: '⚡ 中度波動 (20~30)', color: '#b45309', bg: '#fef3c7' }};
+  return {{ label: '✅ 低波動平穩 (<20)', color: '#15803d', bg: '#dcfce7' }};
 }}
 
 function getSliceIndices(rangeKey) {{
@@ -1513,7 +1602,20 @@ function renderDynamicSVG(rangeKey) {{
       vixLayerSvg +
       pillsLogSvg +
     '</g>' +
-  '</svg>';
+    var priceCrosshairSvg = '<g id="price-crosshair" style="display:none;pointer-events:none;">' +
+      '<line id="price-crosshair-line" x1="0" y1="' + CHART_MARGIN_TOP + '" x2="0" y2="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
+      '<circle id="price-dot-close" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />' +
+      '<circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />' +
+      '<g id="price-date-pill">' +
+        '<rect id="price-date-pill-bg" x="-42" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
+        '<text id="price-date-pill-text" x="0" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
+      '</g>' +
+    '</g>';
+
+    priceSvgHtml += priceCrosshairSvg + '</svg>';
 
   var priceWrap = document.getElementById('price-chart-svg-wrap');
   if (priceWrap) priceWrap.innerHTML = priceSvgHtml;
@@ -1598,6 +1700,15 @@ function renderDynamicSVG(rangeKey) {{
       '<text x="' + (xStart + 104) + '" y="' + (curRsiY + 4).toFixed(1) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">RSI ' + lastRsiVal.toFixed(1) + '</text>';
   }}
 
+  var rsiCrosshairSvg = '<g id="rsi-crosshair" style="display:none;pointer-events:none;">' +
+    '<line id="rsi-crosshair-line" x1="0" y1="' + rsiPlotTop + '" x2="0" y2="' + (rsiPlotTop + rsiPlotHeight) + '" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.85" />' +
+    '<circle id="rsi-dot" cx="0" cy="0" r="4.5" fill="#0f172a" stroke="#ffffff" stroke-width="1.5" />' +
+    '<g id="rsi-date-pill">' +
+      '<rect id="rsi-date-pill-bg" x="-42" y="' + (rsiPlotTop + rsiPlotHeight + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
+      '<text id="rsi-date-pill-text" x="0" y="' + (rsiPlotTop + rsiPlotHeight + 15) + '" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">----</text>' +
+    '</g>' +
+  '</g>';
+
   var rsiTotalHeight = rsiPlotTop + rsiPlotHeight + CHART_MARGIN_BOTTOM;
   var rsiLineWidth = n > 1000 ? 1.2 : 1.6;
 
@@ -1608,6 +1719,7 @@ function renderDynamicSVG(rangeKey) {{
     refLinesSvg +
     latestRsiSvg +
     buildPolyline(subRsi, scaleRsi, '#0f172a', rsiLineWidth) +
+    rsiCrosshairSvg +
   '</svg>';
 
   var rsiWrap = document.getElementById('rsi-chart-svg-wrap');
@@ -1615,6 +1727,24 @@ function renderDynamicSVG(rangeKey) {{
 
   // 12. 更新重大金融事件時序紀錄表格 (若有勾選過濾)
   filterEventsTable(subDates[0], subDates[n - 1]);
+
+  // 13. 保存當前展示區間資料供滑鼠懸浮游標 (Crosshair / Tooltip) 即時計算使用
+  currentSliceData = {{
+    dates: subDates,
+    close: subClose,
+    longSma: subLongSma,
+    emaFast: subEmaFast,
+    emaSlow: subEmaSlow,
+    rsi: subRsi,
+    vix: subVix,
+    xs: xs,
+    n: n,
+    scaleLin: scaleLin,
+    scaleLog: scaleLog,
+    scaleVix: scaleVix,
+    scaleRsi: scaleRsi
+  }};
+  hideCrosshairs();
 }}
 
 function setChartRange(rangeKey) {{
@@ -1685,12 +1815,273 @@ function filterEventsTable(startDate, endDate, forceChecked) {{
   }}
 }}
 
+function hideCrosshairs() {{
+  var pCross = document.getElementById('price-crosshair');
+  var rCross = document.getElementById('rsi-crosshair');
+  var tt = document.getElementById('chart-tooltip');
+  if (pCross) pCross.style.display = 'none';
+  if (rCross) rCross.style.display = 'none';
+  if (tt) tt.style.display = 'none';
+
+  var hBar = document.getElementById('price-hover-bar');
+  if (hBar && chartData && currentSliceData && currentSliceData.n > 0) {{
+    var n = currentSliceData.n;
+    var d = currentSliceData.dates[n - 1];
+    var c = currentSliceData.close[n - 1];
+    var v = (currentSliceData.vix && currentSliceData.vix.length > n - 1) ? currentSliceData.vix[n - 1] : null;
+    var r = (currentSliceData.rsi && currentSliceData.rsi.length > n - 1) ? currentSliceData.rsi[n - 1] : null;
+    var vInfo = getVixRegime(v);
+    hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">最新交易日 (' + d + ')：</span>' +
+      '<span>TQQQ 收盤 <b>$' + formatPrice(c) + '</b></span> • ' +
+      '<span>VIX 恐慌指數 <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
+      '<span>RSI(14) <b>' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + '</b></span>' +
+      '<span style="color:#64748b;margin-left:auto;font-size:11.5px;">（💡 在圖表任意處滑移可檢視歷史價格、VIX與均線精確數值）</span>';
+  }}
+}}
+
+function handleChartHover(chartType, evt) {{
+  if (!currentSliceData || !currentSliceData.n) return;
+  var svgId = chartType === 'rsi' ? 'rsi-chart-svg' : 'price-chart-svg';
+  var svg = document.getElementById(svgId);
+  if (!svg) return;
+
+  var rect = svg.getBoundingClientRect();
+  if (rect.width <= 0) return;
+
+  var clientX = evt.clientX;
+  var clientY = evt.clientY;
+  if (evt.touches && evt.touches.length > 0) {{
+    clientX = evt.touches[0].clientX;
+    clientY = evt.touches[0].clientY;
+  }}
+
+  var svgX = ((clientX - rect.left) / rect.width) * CHART_SVG_WIDTH;
+
+  if (svgX < CHART_MARGIN_LEFT - 12 || svgX > CHART_MARGIN_LEFT + CHART_WIDTH + 12) {{
+    hideCrosshairs();
+    return;
+  }}
+
+  var clampedX = Math.max(CHART_MARGIN_LEFT, Math.min(CHART_MARGIN_LEFT + CHART_WIDTH, svgX));
+  var ratio = (clampedX - CHART_MARGIN_LEFT) / CHART_WIDTH;
+  var idx = Math.round(ratio * (currentSliceData.n - 1));
+  idx = Math.max(0, Math.min(currentSliceData.n - 1, idx));
+
+  updateCrosshairAndTooltip(idx, clientX, clientY);
+}}
+
+function updateCrosshairAndTooltip(idx, clientX, clientY) {{
+  if (!currentSliceData || idx < 0 || idx >= currentSliceData.n) return;
+
+  var d = currentSliceData.dates[idx];
+  var c = currentSliceData.close[idx];
+  var f = currentSliceData.emaFast[idx];
+  var s = currentSliceData.emaSlow[idx];
+  var l = currentSliceData.longSma[idx];
+  var v = (currentSliceData.vix && currentSliceData.vix.length > idx) ? currentSliceData.vix[idx] : null;
+  var r = (currentSliceData.rsi && currentSliceData.rsi.length > idx) ? currentSliceData.rsi[idx] : null;
+  var xPos = currentSliceData.xs[idx];
+
+  var scaleFn = currentScaleMode === 'log' ? currentSliceData.scaleLog : currentSliceData.scaleLin;
+
+  // 1. 更新主圖 Crosshair
+  var pCross = document.getElementById('price-crosshair');
+  if (pCross) {{
+    pCross.style.display = 'inline';
+    var pLine = document.getElementById('price-crosshair-line');
+    if (pLine) {{
+      pLine.setAttribute('x1', xPos.toFixed(1));
+      pLine.setAttribute('x2', xPos.toFixed(1));
+    }}
+
+    function setDot(dotId, val, customScale, isVisible) {{
+      var dot = document.getElementById(dotId);
+      if (!dot) return;
+      if (val === null || val === undefined || isVisible === false) {{
+        dot.style.display = 'none';
+        return;
+      }}
+      var sf = customScale || scaleFn;
+      var y = sf(val);
+      if (y === null || isNaN(y)) {{
+        dot.style.display = 'none';
+      }} else {{
+        dot.style.display = 'inline';
+        dot.setAttribute('cx', xPos.toFixed(1));
+        dot.setAttribute('cy', y.toFixed(1));
+      }}
+    }}
+
+    setDot('price-dot-close', c, null, true);
+    setDot('price-dot-fast', f, null, layerVisibility['ema-fast']);
+    setDot('price-dot-slow', s, null, layerVisibility['ema-slow']);
+    setDot('price-dot-long', l, null, true);
+    setDot('price-dot-vix', v, currentSliceData.scaleVix, layerVisibility['vix-line']);
+
+    var pDateBg = document.getElementById('price-date-pill-bg');
+    var pDateText = document.getElementById('price-date-pill-text');
+    if (pDateBg && pDateText) {{
+      pDateBg.setAttribute('x', (xPos - 42).toFixed(1));
+      pDateText.setAttribute('x', xPos.toFixed(1));
+      pDateText.textContent = d;
+    }}
+  }}
+
+  // 2. 更新副圖 Crosshair
+  var rCross = document.getElementById('rsi-crosshair');
+  if (rCross) {{
+    rCross.style.display = 'inline';
+    var rLine = document.getElementById('rsi-crosshair-line');
+    if (rLine) {{
+      rLine.setAttribute('x1', xPos.toFixed(1));
+      rLine.setAttribute('x2', xPos.toFixed(1));
+    }}
+    var rDot = document.getElementById('rsi-dot');
+    if (rDot) {{
+      if (r !== null && r !== undefined && currentSliceData.scaleRsi) {{
+        var ry = currentSliceData.scaleRsi(r);
+        if (ry !== null && !isNaN(ry)) {{
+          rDot.style.display = 'inline';
+          rDot.setAttribute('cx', xPos.toFixed(1));
+          rDot.setAttribute('cy', ry.toFixed(1));
+        }} else {{
+          rDot.style.display = 'none';
+        }}
+      }} else {{
+        rDot.style.display = 'none';
+      }}
+    }}
+    var rDateBg = document.getElementById('rsi-date-pill-bg');
+    var rDateText = document.getElementById('rsi-date-pill-text');
+    if (rDateBg && rDateText) {{
+      rDateBg.setAttribute('x', (xPos - 42).toFixed(1));
+      rDateText.setAttribute('x', xPos.toFixed(1));
+      rDateText.textContent = d;
+    }}
+  }}
+
+  // 3. 漲跌幅計算
+  var pctStr = '';
+  var pctColor = '#64748b';
+  if (idx > 0 && currentSliceData.close[idx - 1] !== null && c !== null) {{
+    var prevC = currentSliceData.close[idx - 1];
+    var pct = ((c - prevC) / prevC) * 100;
+    pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+    pctColor = pct >= 0 ? '#16a34a' : '#dc2626';
+  }}
+
+  // 4. VIX 狀態與顏色
+  var vInfo = getVixRegime(v);
+
+  // 5. RSI 顏色與標籤
+  var rsiColor = '#0f172a';
+  var rsiTag = '';
+  if (r !== null && r !== undefined) {{
+    if (r >= 70) {{ rsiColor = '#dc2626'; rsiTag = '過熱'; }}
+    else if (r >= 65) {{ rsiColor = '#f59e0b'; rsiTag = '超買'; }}
+    else if (r <= 45) {{ rsiColor = '#dc2626'; rsiTag = '弱勢'; }}
+    else {{ rsiColor = '#16a34a'; rsiTag = '健康'; }}
+  }}
+
+  // 6. 查找當日事件
+  var evHtml = '';
+  if (chartData.events) {{
+    var ev = null;
+    for (var k = 0; k < chartData.events.length; k++) {{
+      if (chartData.events[k].date === d) {{ ev = chartData.events[k]; break; }}
+    }}
+    if (ev) {{
+      evHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed #e2e8f0;font-size:11px;color:#b45309;">' +
+        '📌 <b>' + (ev.title || '金融事件') + '</b>' + (ev.description ? '：' + ev.description : '') +
+        '</div>';
+    }}
+  }}
+
+  // 7. 更新浮動 Tooltip 內容與定位
+  var tt = document.getElementById('chart-tooltip');
+  if (tt) {{
+    tt.innerHTML = '<div style="font-weight:700;font-size:13px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;display:flex;justify-content:space-between;align-items:center;">' +
+      '<span>📅 ' + d + '</span>' +
+      (pctStr ? '<span style="font-size:12px;font-weight:700;color:' + pctColor + ';">' + pctStr + '</span>' : '') +
+      '</div>' +
+      '<div class="chart-tooltip-grid">' +
+        '<span style="color:#2563eb;font-weight:600;">■ TQQQ 收盤：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#2563eb;">$' + formatPrice(c) + '</span>' +
+
+        '<span style="color:#e11d48;font-weight:600;">■ VIX 恐慌指數：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:' + vInfo.color + ';">' + formatPrice(v) + ' <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:' + vInfo.bg + ';color:' + vInfo.color + ';">' + vInfo.label + '</span></span>' +
+
+        '<span style="color:#0d9488;font-weight:600;">■ EMA ' + chartData.ema_fast_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#0d9488;">$' + formatPrice(f) + '</span>' +
+
+        '<span style="color:#ea580c;font-weight:600;">■ EMA ' + chartData.ema_slow_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#ea580c;">$' + formatPrice(s) + '</span>' +
+
+        '<span style="color:#9333ea;font-weight:600;">■ SMA ' + chartData.long_sma_period + '日：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#9333ea;">$' + formatPrice(l) + '</span>' +
+
+        '<span style="color:#0f172a;font-weight:600;">■ RSI(14)：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:' + rsiColor + ';">' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + (rsiTag ? ' (' + rsiTag + ')' : '') + '</span>' +
+      '</div>' +
+      evHtml;
+
+    tt.style.display = 'block';
+
+    var ttW = tt.offsetWidth || 240;
+    var ttH = tt.offsetHeight || 220;
+    var posX = clientX + 16;
+    var posY = clientY + 16;
+    if (posX + ttW > window.innerWidth - 12) {{
+      posX = clientX - ttW - 16;
+    }}
+    if (posY + ttH > window.innerHeight - 12) {{
+      posY = clientY - ttH - 16;
+    }}
+    tt.style.left = Math.max(8, posX) + 'px';
+    tt.style.top = Math.max(8, posY) + 'px';
+  }}
+
+  // 8. 同步更新主圖上方指示列
+  var hBar = document.getElementById('price-hover-bar');
+  if (hBar) {{
+    hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">' + d + '：</span>' +
+      '<span>TQQQ <b>$' + formatPrice(c) + '</b> <span style="color:' + pctColor + ';">(' + (pctStr || '基準') + ')</span></span> • ' +
+      '<span>VIX <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
+      '<span>EMA10 <b>$' + formatPrice(f) + '</b></span> • ' +
+      '<span>EMA20 <b>$' + formatPrice(s) + '</b></span> • ' +
+      '<span>SMA200 <b>$' + formatPrice(l) + '</b></span> • ' +
+      '<span>RSI <b>' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + '</b></span>';
+  }}
+}}
+
+function initHoverEvents() {{
+  var pWrap = document.getElementById('price-chart-svg-wrap');
+  var rWrap = document.getElementById('rsi-chart-svg-wrap');
+
+  if (pWrap) {{
+    pWrap.addEventListener('mousemove', function(e) {{ handleChartHover('price', e); }});
+    pWrap.addEventListener('mouseleave', function() {{ hideCrosshairs(); }});
+    pWrap.addEventListener('touchmove', function(e) {{ handleChartHover('price', e); }}, {{ passive: true }});
+    pWrap.addEventListener('touchstart', function(e) {{ handleChartHover('price', e); }}, {{ passive: true }});
+    pWrap.addEventListener('touchend', function() {{ hideCrosshairs(); }});
+  }}
+
+  if (rWrap) {{
+    rWrap.addEventListener('mousemove', function(e) {{ handleChartHover('rsi', e); }});
+    rWrap.addEventListener('mouseleave', function() {{ hideCrosshairs(); }});
+    rWrap.addEventListener('touchmove', function(e) {{ handleChartHover('rsi', e); }}, {{ passive: true }});
+    rWrap.addEventListener('touchstart', function(e) {{ handleChartHover('rsi', e); }}, {{ passive: true }});
+    rWrap.addEventListener('touchend', function() {{ hideCrosshairs(); }});
+  }}
+}}
+
 // 頁面載入後自動啟動
 window.addEventListener('DOMContentLoaded', function() {{
   if (chartData) {{
     var initRange = chartData.default_range || '1y';
     setChartRange(initRange);
   }}
+  initHoverEvents();
 }});
 </script>
 </head>
@@ -1750,6 +2141,9 @@ window.addEventListener('DOMContentLoaded', function() {{
   <footer>
     TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：{VERSION} • 報表時間戳記：{now_cst} • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
+
+  <!-- 滑鼠懸浮浮動資訊卡 (Tooltip，呈現當日價格、VIX指數等精確數值) -->
+  <div id="chart-tooltip" class="chart-tooltip"></div>
 </body></html>"""
 
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)

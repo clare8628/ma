@@ -219,6 +219,47 @@ class TestChart(unittest.TestCase):
             # 驗證 SVG 畫布寬度拓寬為 1600
             self.assertIn('viewBox="0 0 1600', content)
 
+    def test_crosshair_and_tooltip_interaction(self):
+        # 1. 驗證主圖包含十字線、各曲線高亮圓點與提示列
+        price_svg = _render_price_svg(
+            self.ind_with_vix,
+            window=20,
+            long_sma_period=200,
+            ema_fast_period=10,
+            ema_slow_period=20,
+        )
+        self.assertIn('id="price-crosshair"', price_svg)
+        self.assertIn('id="price-crosshair-line"', price_svg)
+        self.assertIn('id="price-dot-close"', price_svg)
+        self.assertIn('id="price-dot-vix"', price_svg)
+        self.assertIn('id="price-hover-bar"', price_svg)
+        self.assertIn('price-date-pill', price_svg)
+
+        # 2. 驗證副圖包含 RSI 游標導引線與高亮點
+        rsi_svg = _render_rsi_svg(self.ind_with_vix, window=20)
+        self.assertIn('id="rsi-crosshair"', rsi_svg)
+        self.assertIn('id="rsi-crosshair-line"', rsi_svg)
+        self.assertIn('id="rsi-dot"', rsi_svg)
+        self.assertIn('rsi-date-pill', rsi_svg)
+
+        # 3. 驗證完整報告包含 Tooltip 容器與前端互動事件引擎
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = os.path.join(tmpdir, "report.html")
+            render_html_report(out_path, self.ind_with_vix, self.rec)
+            with open(out_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            self.assertIn('id="chart-tooltip"', content)
+            self.assertIn('class="chart-tooltip"', content)
+            self.assertIn('handleChartHover', content)
+            self.assertIn('updateCrosshairAndTooltip', content)
+            self.assertIn('hideCrosshairs', content)
+            self.assertIn('initHoverEvents', content)
+            self.assertIn('getVixRegime', content)
+            self.assertIn('currentSliceData', content)
+            self.assertIn('VIX 恐慌指數', content)
+            self.assertIn('平台版本：v1.5.2', content)
+
 
 if __name__ == "__main__":
     unittest.main()
