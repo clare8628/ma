@@ -16,6 +16,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: python3 -m unittest discover -s tests
+      - name: Diagnose data freshness (Yahoo latest bars)
+        run: |
+          date -u
+          for s in QQQ TQQQ %5EVIX; do
+            curl -s -m 30 -A "Mozilla/5.0 (compatible; LRS-Bot/1.0)" "https://query1.finance.yahoo.com/v8/finance/chart/$s?range=5d&interval=1d" \
+              | python3 -c "import sys,json,time; r=json.load(sys.stdin)['chart']['result'][0]; print(r['meta']['symbol'], [time.strftime('%m-%d',time.gmtime(t)) for t in r['timestamp']], 'mkt', time.strftime('%m-%d %H:%M',time.gmtime(r['meta']['regularMarketTime'])))" || echo "$s fetch failed"
+          done
       - run: python3 main.py
         env:
           MGTASSET_API_TOKEN: ${{ secrets.MGTASSET_API_TOKEN }}

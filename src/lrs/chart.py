@@ -922,7 +922,7 @@ def render_html_report(
     last_date = ind.dates[-1]
 
     # 版本與時間戳記
-    now_cst = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    now_cst = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
 
     # 構建前端全歷史資料 Payload (JSON)
     chart_payload = {
