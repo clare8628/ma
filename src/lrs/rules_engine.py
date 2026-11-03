@@ -1,8 +1,8 @@
 """資料驅動的規則引擎：從 config/rules.json 載入規則，不需改程式碼即可新增/調整規則。
 
 condition 範例：
-  {"left": "tqqq.rsi", "op": ">", "right": 50}
-  {"left": "tqqq.ema_fast", "op": "crosses_above", "right": "tqqq.ema_slow"}
+  {"left": "qqq.rsi", "op": ">", "right": 50}
+  {"left": "qqq.ema_fast", "op": "crosses_above", "right": "qqq.ema_slow"}
 
 op 支援: >, <, >=, <=, ==, !=, crosses_above, crosses_below
 """

@@ -1,12 +1,13 @@
 """零相依套件的圖表產生器：純字串組裝 SVG，輸出單一自包含 HTML 報告。
 
-主圖：TQQQ 收盤價 + 長期 SMA(預設200日，框架) + 短期 EMA 10日/20日(觸發) + VIX 恐慌指標曲線(含 45 抄底門檻)，
-      均線與 VIX 曲線各自可用圖上開關隱藏，並標示黃金/死亡交叉點及重大金融事件時間點。
+主圖：QQQ 收盤價(訊號基礎) + 長期 SMA(預設200日，框架) + 短期 EMA 10日/20日(觸發) +
+      TQQQ 實際價格(右側次軸，虛線參考，實際買賣標的) + VIX 恐慌指標曲線(含 45 抄底門檻)，
+      均線、TQQQ 參考線與 VIX 曲線各自可用圖上開關隱藏，並標示黃金/死亡交叉點及重大金融事件時間點。
       支援時間軸延長追溯回 TQQQ 2010 年成立開始（全歷史 All-Time）。
       支援線性座標 (Linear) 與對數座標 (Log Scale) 即時切換，便於長週期觀察。
       支援觀察時間區間方便可調（1M/3M/6M/1Y/2Y/5Y/10Y/ALL 及關鍵歷史情境跳轉），避免全時間長度過於擁擠。
       版面左右兩側充分利用：最大寬度擴充至寬螢幕友善自適應（1760px），右側標記最新均線與 VIX 定位 (Price Pills)。
-副圖：RSI(14)，含 45/50/55/65/70 參考線（避險/進場下緣/中線/超買/過熱）及最新 RSI 指標標籤。
+副圖：QQQ RSI(14)(訊號基礎)，含 45/50/55/65/70 參考線（避險/進場下緣/中線/超買/過熱）及最新 RSI 指標標籤。
 兩圖皆含縱軸（雙側數值刻度）與橫軸（日期/年份刻度）。
 報告同時整合版本時間戳記、目前遵守之「買入與賣出規則」區塊及重大金融事件時間軸。
 """
@@ -21,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.5.3"
+VERSION = "v1.6.0"
 
 # 擴充畫布寬度與高度以充分利用寬螢幕與兩側空間
 WIDTH = 1380
@@ -206,10 +207,13 @@ def _render_price_svg(
     events: Optional[List[dict]] = None,
 ) -> str:
     dates = ind.dates[-window:]
-    close = ind.tqqq_close[-window:]
-    long_sma = ind.tqqq_sma_chart_long[-window:]
-    ema_fast = ind.tqqq_ema_fast[-window:]
-    ema_slow = ind.tqqq_ema_slow[-window:]
+    # 主線：訊號基礎為 QQQ（長期SMA框架 + 短期EMA觸發皆計算在 QQQ 收盤價上）
+    close = ind.qqq_close[-window:]
+    long_sma = ind.qqq_sma_chart_long[-window:]
+    ema_fast = ind.qqq_ema_fast[-window:]
+    ema_slow = ind.qqq_ema_slow[-window:]
+    # 次線：TQQQ 實際買賣標的之成交價格，僅供參考顯示（右側獨立次軸，虛線呈現）
+    tqqq_close = ind.tqqq_close[-window:]
 
     all_vals = [
         v for v in close + [x for x in long_sma if x is not None] +
@@ -242,6 +246,46 @@ def _render_price_svg(
     y_long_log = [scale_log(v) for v in long_sma]
     y_fast_log = [scale_log(v) for v in ema_fast]
     y_slow_log = [scale_log(v) for v in ema_slow]
+
+    # TQQQ 實際價格換算 (獨立次軸，量級與 QQQ 不同，比例尺各自獨立計算)
+    valid_tqqq = [v for v in tqqq_close if v is not None]
+    scale_tqqq_lin = None
+    scale_tqqq_log = None
+    y_tqqq_lin: List[Optional[float]] = [None] * len(tqqq_close)
+    y_tqqq_log: List[Optional[float]] = [None] * len(tqqq_close)
+    tqqq_layer_svg = ""
+    if valid_tqqq:
+        tqqq_vmin, tqqq_vmax = min(valid_tqqq), max(valid_tqqq)
+        tqqq_pad = (tqqq_vmax - tqqq_vmin) * 0.05 or 1.0
+        tqqq_vmin_lin, tqqq_vmax_lin = tqqq_vmin - tqqq_pad, tqqq_vmax + tqqq_pad
+        tqqq_span_lin = (tqqq_vmax_lin - tqqq_vmin_lin) or 1.0
+
+        def _scale_tqqq_lin(v):
+            if v is None:
+                return None
+            return plot_top + plot_height - (v - tqqq_vmin_lin) / tqqq_span_lin * plot_height
+
+        scale_tqqq_lin = _scale_tqqq_lin
+        y_tqqq_lin = [scale_tqqq_lin(v) for v in tqqq_close]
+
+        _, scale_tqqq_log = _log_y_axis(tqqq_vmin, tqqq_vmax, plot_top, plot_height)
+        y_tqqq_log = [scale_tqqq_log(v) for v in tqqq_close]
+
+        tqqq_line_width = 1.2 if len(dates) > 1000 else 1.6
+        tqqq_polyline_lin = _polyline(xs, y_tqqq_lin, "#2563eb", tqqq_line_width)
+        tqqq_polyline_log = _polyline(xs, y_tqqq_log, "#2563eb", tqqq_line_width)
+        tqqq_layer_svg = (
+            f'<g class="tqqq-ref-layer">'
+            f'<g stroke-dasharray="6,4" opacity="0.6">{tqqq_polyline_lin}</g>'
+            f'</g>'
+        )
+        tqqq_layer_log_svg = (
+            f'<g class="tqqq-ref-layer">'
+            f'<g stroke-dasharray="6,4" opacity="0.6">{tqqq_polyline_log}</g>'
+            f'</g>'
+        )
+    else:
+        tqqq_layer_log_svg = ""
 
     # 黃金交叉與死亡交叉標記 (線性與對數)
     markers_lin, markers_log = [], []
@@ -348,17 +392,21 @@ def _render_price_svg(
 
     # 右側 Price Pills (線性與對數)
     pill_items_lin = [
-        ("TQQQ", close[-1], y_close_lin[-1], "#2563eb"),
+        ("QQQ", close[-1], y_close_lin[-1], "#2563eb"),
         (f"EMA{ema_fast_period}", ema_fast[-1], y_fast_lin[-1], "#0d9488"),
         (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_lin[-1], "#ea580c"),
         (f"SMA{long_sma_period}", long_sma[-1], y_long_lin[-1], "#9333ea"),
     ]
     pill_items_log = [
-        ("TQQQ", close[-1], y_close_log[-1], "#2563eb"),
+        ("QQQ", close[-1], y_close_log[-1], "#2563eb"),
         (f"EMA{ema_fast_period}", ema_fast[-1], y_fast_log[-1], "#0d9488"),
         (f"EMA{ema_slow_period}", ema_slow[-1], y_slow_log[-1], "#ea580c"),
         (f"SMA{long_sma_period}", long_sma[-1], y_long_log[-1], "#9333ea"),
     ]
+    if valid_tqqq and y_tqqq_lin[-1] is not None:
+        pill_items_lin.append(("TQQQ", tqqq_close[-1], y_tqqq_lin[-1], "#64748b"))
+    if valid_tqqq and y_tqqq_log[-1] is not None:
+        pill_items_log.append(("TQQQ", tqqq_close[-1], y_tqqq_log[-1], "#64748b"))
     if vix and vix[-1] is not None and scale_vix is not None:
         y_vix_last = scale_vix(vix[-1])
         pill_items_lin.append(("VIX", vix[-1], y_vix_last, "#e11d48"))
@@ -370,15 +418,16 @@ def _render_price_svg(
     total_height = MARGIN_TOP + PRICE_PLOT_HEIGHT + MARGIN_BOTTOM
 
     labels = f'''
-    <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#2563eb">■ TQQQ 收盤價</text>
-    <text x="{MARGIN_LEFT + 150}" y="18" font-size="13" fill="#9333ea">■ 長期 SMA({long_sma_period}日,框架)</text>
-    <text x="{MARGIN_LEFT + 370}" y="18" font-size="13" fill="#0d9488">■ 短期 EMA({ema_fast_period}日)</text>
-    <text x="{MARGIN_LEFT + 540}" y="18" font-size="13" fill="#ea580c">■ 短期 EMA({ema_slow_period}日)</text>
-    <text x="{MARGIN_LEFT + 710}" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>
-    <text x="{MARGIN_LEFT + 820}" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>
-    <text x="{MARGIN_LEFT + 930}" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>
-    <text x="{MARGIN_LEFT + 1070}" y="18" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>
-    <text x="{MARGIN_LEFT + 1200}" y="18" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>
+    <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#2563eb">■ QQQ 收盤價(訊號基礎)</text>
+    <text x="{MARGIN_LEFT + 180}" y="18" font-size="13" fill="#9333ea">■ 長期 SMA({long_sma_period}日,框架)</text>
+    <text x="{MARGIN_LEFT + 400}" y="18" font-size="13" fill="#0d9488">■ 短期 EMA({ema_fast_period}日)</text>
+    <text x="{MARGIN_LEFT + 570}" y="18" font-size="13" fill="#ea580c">■ 短期 EMA({ema_slow_period}日)</text>
+    <text x="{MARGIN_LEFT + 740}" y="18" font-size="13" fill="#64748b">- - TQQQ 實際價格(右側次軸)</text>
+    <text x="{MARGIN_LEFT + 970}" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>
+    <text x="{MARGIN_LEFT + 1080}" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>
+    <text x="{MARGIN_LEFT}" y="36" font-size="13" fill="#d97706">▼ 重大金融事件</text>
+    <text x="{MARGIN_LEFT + 140}" y="36" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>
+    <text x="{MARGIN_LEFT + 270}" y="36" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>
     '''
 
     y_axis_lin_svg = _y_axis(vmin_lin, vmax_lin, plot_top, plot_height)
@@ -435,6 +484,9 @@ def _render_price_svg(
         <input type="checkbox" checked onchange="toggleLayer('cross-marker', this.checked)"> 顯示黃金/死亡交叉
       </label>
       <label style="cursor:pointer;">
+        <input type="checkbox" checked onchange="toggleLayer('tqqq-ref', this.checked)"> 顯示 TQQQ 實際價格參考線(虛線)
+      </label>
+      <label style="cursor:pointer;">
         <input type="checkbox" checked onchange="toggleLayer('financial-event', this.checked)"> 顯示重大金融事件標記
       </label>
       <label style="cursor:pointer;">
@@ -455,6 +507,7 @@ def _render_price_svg(
           <circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />
           <circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />
           <circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />
+          <circle id="price-dot-tqqq" cx="0" cy="0" r="4" fill="#64748b" stroke="#ffffff" stroke-width="1.5" />
           <circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />
           <g id="price-date-pill">
             <rect id="price-date-pill-bg" x="-42" y="{plot_top + plot_height + 2}" width="84" height="18" rx="4" fill="#0f172a" />
@@ -482,6 +535,7 @@ def _render_price_svg(
           {_polyline(xs, y_long_lin, "#9333ea", ma_width)}
           <g class="ema-fast-layer">{_polyline(xs, y_fast_lin, "#0d9488", ma_width)}</g>
           <g class="ema-slow-layer">{_polyline(xs, y_slow_lin, "#ea580c", ma_width)}</g>
+          {tqqq_layer_svg}
           <g class="cross-marker-layer">{marker_lin_svg}</g>
           {vix_layer_svg}
           {pills_lin_svg}
@@ -494,6 +548,7 @@ def _render_price_svg(
           {_polyline(xs, y_long_log, "#9333ea", ma_width)}
           <g class="ema-fast-layer">{_polyline(xs, y_fast_log, "#0d9488", ma_width)}</g>
           <g class="ema-slow-layer">{_polyline(xs, y_slow_log, "#ea580c", ma_width)}</g>
+          {tqqq_layer_log_svg}
           <g class="cross-marker-layer">{marker_log_svg}</g>
           {vix_layer_svg}
           {pills_log_svg}
@@ -507,7 +562,7 @@ def _render_price_svg(
 
 def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
     dates = ind.dates[-window:]
-    rsi = ind.tqqq_rsi[-window:]
+    rsi = ind.qqq_rsi[-window:]
     xs = _xs(len(dates))
 
     plot_top = 36
@@ -565,7 +620,7 @@ def _render_rsi_svg(ind: DailyIndicators, window: int) -> str:
     return f'''
     <div id="rsi-chart-svg-wrap" class="chart-wrap" style="position:relative;overflow-x:auto;">
       <svg id="rsi-chart-svg" viewBox="0 0 {SVG_WIDTH} {total_height}" width="100%" height="{total_height}" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">
-        <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14) 震盪指標</text>
+        <text x="{MARGIN_LEFT}" y="18" font-size="13" fill="#0f172a">■ QQQ RSI(14) 震盪指標(訊號基礎)</text>
         {y_axis_svg}
         {x_axis_svg}
         {''.join(ref_lines)}
@@ -600,11 +655,11 @@ def _render_rules_block(rules: List[Rule], recommendation: Recommendation) -> st
         mapping = {
             "R0_vix_panic_bottom": "VIX 恐慌指數 &ge; 45（極端恐慌拋售，歷史抄底勝率極高）",
             "R1_bear_lockout": "QQQ 收盤價 &lt; 200日 SMA（大盤跌破多空分界線）",
-            "R2_death_cross_exit": "TQQQ 10EMA 向下死亡交叉 20EMA",
-            "R3_rsi_defensive_warning": "持股中 且 TQQQ RSI(14) &lt; 45（動能顯著轉弱）",
-            "R4_overheat_trim": "TQQQ RSI(14) &gt; 70 且 高於 20EMA 超過 15%（極端過熱）",
-            "R5_golden_cross_entry": "大盤 QQQ &gt; 200SMA 且 TQQQ 10EMA 金叉 20EMA 且 50 &lt; RSI &lt; 65",
-            "R6_entry_rejected_overbought": "大盤 QQQ &gt; 200SMA 且 TQQQ 10EMA 金叉 20EMA 但 RSI &ge; 65（防追高）",
+            "R2_death_cross_exit": "QQQ 10EMA 向下死亡交叉 20EMA（訊號基礎為QQQ，賣出TQQQ）",
+            "R3_rsi_defensive_warning": "持股中 且 QQQ RSI(14) &lt; 45（大盤動能顯著轉弱）",
+            "R4_overheat_trim": "QQQ RSI(14) &gt; 70 且 高於其 20EMA 超過 15%（大盤極端過熱）",
+            "R5_golden_cross_entry": "大盤 QQQ &gt; 200SMA 且 QQQ 10EMA 金叉 20EMA 且 50 &lt; RSI &lt; 65（買進TQQQ）",
+            "R6_entry_rejected_overbought": "大盤 QQQ &gt; 200SMA 且 QQQ 10EMA 金叉 20EMA 但 RSI &ge; 65（防追高）",
             "R-REBAL": "每年 11/1 前後 3 天窗口，防禦性資產偏離 50% 目標配置",
         }
         if rule_id in mapping:
@@ -685,8 +740,8 @@ def _render_metrics_panel(ind: DailyIndicators, recommendation: Recommendation) 
     v_ctx = ctx.get("vix", {})
 
     tqqq_close = t_ctx.get("close")
-    ema_slow_dist = t_ctx.get("ema_slow_distance_pct")
-    rsi_val = t_ctx.get("rsi")
+    ema_slow_dist = q_ctx.get("ema_slow_distance_pct")
+    rsi_val = q_ctx.get("rsi")
     qqq_close = q_ctx.get("close")
     qqq_sma = q_ctx.get("sma200")
     vix_val = v_ctx.get("close")
@@ -723,17 +778,17 @@ def _render_metrics_panel(ind: DailyIndicators, recommendation: Recommendation) 
     return f"""
     <div class="metrics-grid">
       <div class="metric-box">
-        <div class="metric-title">TQQQ 最新收盤</div>
+        <div class="metric-title">TQQQ 最新收盤（實際買賣標的）</div>
         <div class="metric-val" style="color:#2563eb;">{_format_price(tqqq_close)}</div>
         <div class="metric-desc">交易基準日：{recommendation.date}</div>
       </div>
       <div class="metric-box">
-        <div class="metric-title">20EMA 乖離幅度</div>
+        <div class="metric-title">QQQ 20EMA 乖離幅度（訊號基礎）</div>
         <div class="metric-val" style="color:{'#dc2626' if (ema_slow_dist or 0) > 15 else '#0f172a'};">{dist_str}</div>
-        <div class="metric-desc">超過 +15% 觸發分批止盈</div>
+        <div class="metric-desc">超過 +15% 觸發分批止盈 TQQQ</div>
       </div>
       <div class="metric-box">
-        <div class="metric-title">TQQQ RSI(14) 動能</div>
+        <div class="metric-title">QQQ RSI(14) 動能（訊號基礎）</div>
         <div class="metric-val" style="color:#0f172a;">{rsi_str}</div>
         <div class="metric-desc">{rsi_eval}</div>
       </div>
@@ -927,11 +982,12 @@ def render_html_report(
     # 構建前端全歷史資料 Payload (JSON)
     chart_payload = {
         "dates": ind.dates,
+        "qqq_close": [round(c, 2) if c is not None else None for c in ind.qqq_close],
         "tqqq_close": [round(c, 2) if c is not None else None for c in ind.tqqq_close],
-        "long_sma": [round(v, 2) if v is not None else None for v in ind.tqqq_sma_chart_long],
-        "ema_fast": [round(v, 2) if v is not None else None for v in ind.tqqq_ema_fast],
-        "ema_slow": [round(v, 2) if v is not None else None for v in ind.tqqq_ema_slow],
-        "rsi": [round(v, 1) if v is not None else None for v in ind.tqqq_rsi],
+        "long_sma": [round(v, 2) if v is not None else None for v in ind.qqq_sma_chart_long],
+        "ema_fast": [round(v, 2) if v is not None else None for v in ind.qqq_ema_fast],
+        "ema_slow": [round(v, 2) if v is not None else None for v in ind.qqq_ema_slow],
+        "rsi": [round(v, 1) if v is not None else None for v in ind.qqq_rsi],
         "vix": [round(v, 2) if v is not None else None for v in ind.vix_close] if ind.vix_close else [],
         "events": events,
         "long_sma_period": long_sma_period,
@@ -1178,6 +1234,7 @@ var layerVisibility = {{
   'ema-fast': true,
   'ema-slow': true,
   'cross-marker': true,
+  'tqqq-ref': true,
   'financial-event': true,
   'vix-line': true
 }};
@@ -1273,7 +1330,8 @@ function renderDynamicSVG(rangeKey) {{
   var bounds = getSliceIndices(rangeKey);
   var s = bounds[0], e = bounds[1];
   var subDates = chartData.dates.slice(s, e);
-  var subClose = chartData.tqqq_close.slice(s, e);
+  var subClose = chartData.qqq_close.slice(s, e);
+  var subTqqq = chartData.tqqq_close.slice(s, e);
   var subLongSma = chartData.long_sma.slice(s, e);
   var subEmaFast = chartData.ema_fast.slice(s, e);
   var subEmaSlow = chartData.ema_slow.slice(s, e);
@@ -1513,6 +1571,49 @@ function renderDynamicSVG(rangeKey) {{
     }}
   }}
 
+  // 8.6 TQQQ 實際價格曲線 (獨立次軸，虛線參考；實際買賣標的，量級與 QQQ 不同)
+  var validTqqq = [];
+  for (var i = 0; i < n; i++) {{
+    if (subTqqq[i] !== null && subTqqq[i] !== undefined) validTqqq.push(subTqqq[i]);
+  }}
+  var tqqqLayerLinSvg = '', tqqqLayerLogSvg = '';
+  var tqqqPillItemLin = null, tqqqPillItemLog = null;
+  if (validTqqq.length > 0) {{
+    var tqqqVmin = Math.min.apply(null, validTqqq);
+    var tqqqVmax = Math.max.apply(null, validTqqq);
+    var tqqqPad = (tqqqVmax - tqqqVmin) * 0.05 || 1.0;
+    var tqqqVminLin = tqqqVmin - tqqqPad, tqqqVmaxLin = tqqqVmax + tqqqPad;
+    var tqqqSpanLin = (tqqqVmaxLin - tqqqVminLin) || 1.0;
+
+    function scaleTqqqLin(v) {{
+      if (v === null || v === undefined) return null;
+      return CHART_MARGIN_TOP + CHART_PRICE_HEIGHT - ((v - tqqqVminLin) / tqqqSpanLin) * CHART_PRICE_HEIGHT;
+    }}
+
+    var tqqqSafeVmin = Math.max(tqqqVmin, 0.05);
+    var tqqqSafeVmax = Math.max(tqqqVmax, tqqqSafeVmin * 1.5);
+    var tqqqLogMin = Math.log10(tqqqSafeVmin);
+    var tqqqLogMax = Math.log10(tqqqSafeVmax);
+    var tqqqLogSpan = (tqqqLogMax - tqqqLogMin) || 1.0;
+
+    function scaleTqqqLog(v) {{
+      if (v === null || v === undefined || v <= 0) return null;
+      var lv = Math.log10(Math.max(v, 0.05));
+      return CHART_MARGIN_TOP + CHART_PRICE_HEIGHT - ((lv - tqqqLogMin) / tqqqLogSpan) * CHART_PRICE_HEIGHT;
+    }}
+
+    var tqqqLineWidth = n > 1000 ? 1.2 : 1.6;
+    var tqqqDisplay = layerVisibility['tqqq-ref'] !== false ? 'inline' : 'none';
+    tqqqLayerLinSvg = '<g class="tqqq-ref-layer" style="display:' + tqqqDisplay + ';"><g stroke-dasharray="6,4" opacity="0.6">' + buildPolyline(subTqqq, scaleTqqqLin, '#64748b', tqqqLineWidth) + '</g></g>';
+    tqqqLayerLogSvg = '<g class="tqqq-ref-layer" style="display:' + tqqqDisplay + ';"><g stroke-dasharray="6,4" opacity="0.6">' + buildPolyline(subTqqq, scaleTqqqLog, '#64748b', tqqqLineWidth) + '</g></g>';
+
+    var lastTqqqVal = subTqqq[n - 1];
+    if (lastTqqqVal !== null && lastTqqqVal !== undefined) {{
+      tqqqPillItemLin = {{ name: 'TQQQ', val: lastTqqqVal, color: '#64748b', customScale: scaleTqqqLin }};
+      tqqqPillItemLog = {{ name: 'TQQQ', val: lastTqqqVal, color: '#64748b', customScale: scaleTqqqLog }};
+    }}
+  }}
+
   // 9. 右側 Price Pills (防重疊)
   function buildPills(items, scaleFn) {{
     var valid = [];
@@ -1547,33 +1648,38 @@ function renderDynamicSVG(rangeKey) {{
   var lastSlow = subEmaSlow[n - 1];
   var lastLong = subLongSma[n - 1];
 
-  var pillDef = [
-    {{ name: 'TQQQ', val: lastClose, color: '#2563eb' }},
+  var pillDefLin = [
+    {{ name: 'QQQ', val: lastClose, color: '#2563eb' }},
     {{ name: 'EMA' + chartData.ema_fast_period, val: lastFast, color: '#0d9488' }},
     {{ name: 'EMA' + chartData.ema_slow_period, val: lastSlow, color: '#ea580c' }},
     {{ name: 'SMA' + chartData.long_sma_period, val: lastLong, color: '#9333ea' }}
   ];
+  var pillDefLog = pillDefLin.slice();
+  if (tqqqPillItemLin) pillDefLin.push(tqqqPillItemLin);
+  if (tqqqPillItemLog) pillDefLog.push(tqqqPillItemLog);
   if (vixPillItem) {{
-    pillDef.push(vixPillItem);
+    pillDefLin.push(vixPillItem);
+    pillDefLog.push(vixPillItem);
   }}
 
-  var pillsLinSvg = buildPills(pillDef, scaleLin);
-  var pillsLogSvg = buildPills(pillDef, scaleLog);
+  var pillsLinSvg = buildPills(pillDefLin, scaleLin);
+  var pillsLogSvg = buildPills(pillDefLog, scaleLog);
 
   // 10. 組裝主圖 SVG
   var lineWidth = n > 1000 ? 1.4 : 1.8;
   var maWidth = n > 1000 ? 1.2 : 1.4;
   var totalHeight = CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + CHART_MARGIN_BOTTOM;
 
-  var labelsSvg = '<text x="' + CHART_MARGIN_LEFT + '" y="18" font-size="13" fill="#2563eb">■ TQQQ 收盤價</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 150) + '" y="18" font-size="13" fill="#9333ea">■ 長期 SMA(' + chartData.long_sma_period + '日,框架)</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 370) + '" y="18" font-size="13" fill="#0d9488">■ 短期 EMA(' + chartData.ema_fast_period + '日)</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 540) + '" y="18" font-size="13" fill="#ea580c">■ 短期 EMA(' + chartData.ema_slow_period + '日)</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 710) + '" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 820) + '" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 930) + '" y="18" font-size="13" fill="#d97706">▼ 重大金融事件</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 1070) + '" y="18" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>' +
-    '<text x="' + (CHART_MARGIN_LEFT + 1200) + '" y="18" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>';
+  var labelsSvg = '<text x="' + CHART_MARGIN_LEFT + '" y="18" font-size="13" fill="#2563eb">■ QQQ 收盤價(訊號基礎)</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 180) + '" y="18" font-size="13" fill="#9333ea">■ 長期 SMA(' + chartData.long_sma_period + '日,框架)</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 400) + '" y="18" font-size="13" fill="#0d9488">■ 短期 EMA(' + chartData.ema_fast_period + '日)</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 570) + '" y="18" font-size="13" fill="#ea580c">■ 短期 EMA(' + chartData.ema_slow_period + '日)</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 740) + '" y="18" font-size="13" fill="#64748b">- - TQQQ 實際價格(右側次軸)</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 970) + '" y="18" font-size="13" fill="#16a34a">● 黃金交叉</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 1080) + '" y="18" font-size="13" fill="#dc2626">● 死亡交叉</text>' +
+    '<text x="' + CHART_MARGIN_LEFT + '" y="36" font-size="13" fill="#d97706">▼ 重大金融事件</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 140) + '" y="36" font-size="13" fill="#e11d48">■ VIX 恐慌指數</text>' +
+    '<text x="' + (CHART_MARGIN_LEFT + 270) + '" y="36" font-size="12" fill="#be123c">-- VIX 45 抄底門檻</text>';
 
   var isLog = currentScaleMode === 'log';
   var priceSvgHtml = '<svg id="price-chart-svg" viewBox="0 0 ' + CHART_SVG_WIDTH + ' ' + totalHeight + '" width="100%" height="' + totalHeight + '" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">' +
@@ -1587,6 +1693,7 @@ function renderDynamicSVG(rangeKey) {{
       buildPolyline(subLongSma, scaleLin, '#9333ea', maWidth) +
       '<g class="ema-fast-layer" style="display:' + (layerVisibility['ema-fast'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaFast, scaleLin, '#0d9488', maWidth) + '</g>' +
       '<g class="ema-slow-layer" style="display:' + (layerVisibility['ema-slow'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaSlow, scaleLin, '#ea580c', maWidth) + '</g>' +
+      tqqqLayerLinSvg +
       '<g class="cross-marker-layer" style="display:' + (layerVisibility['cross-marker'] ? 'inline' : 'none') + ';">' + markersLin + '</g>' +
       vixLayerSvg +
       pillsLinSvg +
@@ -1598,6 +1705,7 @@ function renderDynamicSVG(rangeKey) {{
       buildPolyline(subLongSma, scaleLog, '#9333ea', maWidth) +
       '<g class="ema-fast-layer" style="display:' + (layerVisibility['ema-fast'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaFast, scaleLog, '#0d9488', maWidth) + '</g>' +
       '<g class="ema-slow-layer" style="display:' + (layerVisibility['ema-slow'] ? 'inline' : 'none') + ';">' + buildPolyline(subEmaSlow, scaleLog, '#ea580c', maWidth) + '</g>' +
+      tqqqLayerLogSvg +
       '<g class="cross-marker-layer" style="display:' + (layerVisibility['cross-marker'] ? 'inline' : 'none') + ';">' + markersLog + '</g>' +
       vixLayerSvg +
       pillsLogSvg +
@@ -1609,6 +1717,7 @@ function renderDynamicSVG(rangeKey) {{
     '<circle id="price-dot-fast" cx="0" cy="0" r="4" fill="#0d9488" stroke="#ffffff" stroke-width="1.5" />' +
     '<circle id="price-dot-slow" cx="0" cy="0" r="4" fill="#ea580c" stroke="#ffffff" stroke-width="1.5" />' +
     '<circle id="price-dot-long" cx="0" cy="0" r="4" fill="#9333ea" stroke="#ffffff" stroke-width="1.5" />' +
+    '<circle id="price-dot-tqqq" cx="0" cy="0" r="4" fill="#64748b" stroke="#ffffff" stroke-width="1.5" />' +
     '<circle id="price-dot-vix" cx="0" cy="0" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" />' +
     '<g id="price-date-pill">' +
       '<rect id="price-date-pill-bg" x="-42" y="' + (CHART_MARGIN_TOP + CHART_PRICE_HEIGHT + 2) + '" width="84" height="18" rx="4" fill="#0f172a" />' +
@@ -1714,7 +1823,7 @@ function renderDynamicSVG(rangeKey) {{
   var rsiLineWidth = n > 1000 ? 1.2 : 1.6;
 
   var rsiSvgHtml = '<svg id="rsi-chart-svg" viewBox="0 0 ' + CHART_SVG_WIDTH + ' ' + rsiTotalHeight + '" width="100%" height="' + rsiTotalHeight + '" style="background:#fff;max-width:100%;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">' +
-    '<text x="' + CHART_MARGIN_LEFT + '" y="18" font-size="13" fill="#0f172a">■ TQQQ RSI(14) 震盪指標</text>' +
+    '<text x="' + CHART_MARGIN_LEFT + '" y="18" font-size="13" fill="#0f172a">■ QQQ RSI(14) 震盪指標(訊號基礎)</text>' +
     rsiYAxisSvg +
     rsiXAxisSvg +
     refLinesSvg +
@@ -1733,6 +1842,7 @@ function renderDynamicSVG(rangeKey) {{
   currentSliceData = {{
     dates: subDates,
     close: subClose,
+    tqqqClose: subTqqq,
     longSma: subLongSma,
     emaFast: subEmaFast,
     emaSlow: subEmaSlow,
@@ -1743,6 +1853,8 @@ function renderDynamicSVG(rangeKey) {{
     scaleLin: scaleLin,
     scaleLog: scaleLog,
     scaleVix: scaleVix,
+    scaleTqqqLin: validTqqq.length > 0 ? scaleTqqqLin : null,
+    scaleTqqqLog: validTqqq.length > 0 ? scaleTqqqLog : null,
     scaleRsi: scaleRsi
   }};
   hideCrosshairs();
@@ -1841,11 +1953,13 @@ function hideCrosshairs() {{
     var n = currentSliceData.n;
     var d = currentSliceData.dates[n - 1];
     var c = currentSliceData.close[n - 1];
+    var tq = currentSliceData.tqqqClose ? currentSliceData.tqqqClose[n - 1] : null;
     var v = (currentSliceData.vix && currentSliceData.vix.length > n - 1) ? currentSliceData.vix[n - 1] : null;
     var r = (currentSliceData.rsi && currentSliceData.rsi.length > n - 1) ? currentSliceData.rsi[n - 1] : null;
     var vInfo = getVixRegime(v);
     hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">最新交易日 (' + d + ')：</span>' +
-      '<span>TQQQ 收盤 <b>$' + formatPrice(c) + '</b></span> • ' +
+      '<span>QQQ 收盤 <b>$' + formatPrice(c) + '</b></span> • ' +
+      '<span>TQQQ 實際 <b style="color:#64748b;">$' + formatPrice(tq) + '</b></span> • ' +
       '<span>VIX 恐慌指數 <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
       '<span>RSI(14) <b>' + (r !== null && r !== undefined ? r.toFixed(1) : 'N/A') + '</b></span>' +
       '<span style="color:#64748b;margin-left:auto;font-size:11.5px;">（💡 在圖表任意處滑移可檢視歷史價格、VIX與均線精確數值）</span>';
@@ -1892,6 +2006,7 @@ function updateCrosshairAndTooltip(idx, clientX, clientY) {{
 
   var d = currentSliceData.dates[idx];
   var c = currentSliceData.close[idx];
+  var tq = currentSliceData.tqqqClose ? currentSliceData.tqqqClose[idx] : null;
   var f = currentSliceData.emaFast[idx];
   var s = currentSliceData.emaSlow[idx];
   var l = currentSliceData.longSma[idx];
@@ -1900,6 +2015,7 @@ function updateCrosshairAndTooltip(idx, clientX, clientY) {{
   var xPos = currentSliceData.xs[idx];
 
   var scaleFn = currentScaleMode === 'log' ? currentSliceData.scaleLog : currentSliceData.scaleLin;
+  var scaleTqqqFn = currentScaleMode === 'log' ? currentSliceData.scaleTqqqLog : currentSliceData.scaleTqqqLin;
 
   // 1. 更新主圖 Crosshair
   var pCross = document.getElementById('price-crosshair');
@@ -1933,6 +2049,7 @@ function updateCrosshairAndTooltip(idx, clientX, clientY) {{
     setDot('price-dot-fast', f, null, layerVisibility['ema-fast']);
     setDot('price-dot-slow', s, null, layerVisibility['ema-slow']);
     setDot('price-dot-long', l, null, true);
+    setDot('price-dot-tqqq', tq, scaleTqqqFn, layerVisibility['tqqq-ref']);
     setDot('price-dot-vix', v, currentSliceData.scaleVix, layerVisibility['vix-line']);
 
     var pDateBg = document.getElementById('price-date-pill-bg');
@@ -2022,8 +2139,11 @@ function updateCrosshairAndTooltip(idx, clientX, clientY) {{
       (pctStr ? '<span style="font-size:12px;font-weight:700;color:' + pctColor + ';">' + pctStr + '</span>' : '') +
       '</div>' +
       '<div class="chart-tooltip-grid">' +
-        '<span style="color:#2563eb;font-weight:600;">■ TQQQ 收盤：</span>' +
+        '<span style="color:#2563eb;font-weight:600;">■ QQQ 收盤(訊號基礎)：</span>' +
         '<span class="chart-tooltip-row-val" style="color:#2563eb;">$' + formatPrice(c) + '</span>' +
+
+        '<span style="color:#64748b;font-weight:600;">- - TQQQ 實際價格：</span>' +
+        '<span class="chart-tooltip-row-val" style="color:#64748b;">$' + formatPrice(tq) + '</span>' +
 
         '<span style="color:#e11d48;font-weight:600;">■ VIX 恐慌指數：</span>' +
         '<span class="chart-tooltip-row-val" style="color:' + vInfo.color + ';">' + formatPrice(v) + ' <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:' + vInfo.bg + ';color:' + vInfo.color + ';">' + vInfo.label + '</span></span>' +
@@ -2062,7 +2182,8 @@ function updateCrosshairAndTooltip(idx, clientX, clientY) {{
   var hBar = document.getElementById('price-hover-bar');
   if (hBar) {{
     hBar.innerHTML = '<span style="color:#2563eb;font-weight:700;">' + d + '：</span>' +
-      '<span>TQQQ <b>$' + formatPrice(c) + '</b> <span style="color:' + pctColor + ';">(' + (pctStr || '基準') + ')</span></span> • ' +
+      '<span>QQQ <b>$' + formatPrice(c) + '</b> <span style="color:' + pctColor + ';">(' + (pctStr || '基準') + ')</span></span> • ' +
+      '<span>TQQQ <b style="color:#64748b;">$' + formatPrice(tq) + '</b></span> • ' +
       '<span>VIX <b style="color:' + vInfo.color + ';">' + formatPrice(v) + '</b> (' + vInfo.label + ')</span> • ' +
       '<span>EMA10 <b>$' + formatPrice(f) + '</b></span> • ' +
       '<span>EMA20 <b>$' + formatPrice(s) + '</b></span> • ' +
@@ -2148,6 +2269,10 @@ if (document.readyState === 'loading') {{
         時間軸已延長追溯回 TQQQ 成立首日 ({first_full_date}) • 共 {total_dates_count} 交易日
       </span>
     </div>
+    <p style="margin:0 0 10px;font-size:12.5px;color:#64748b;">
+      訊號基礎已改採 <b style="color:#2563eb;">QQQ</b>（長期SMA框架與短期EMA黃金/死亡交叉皆計算於 QQQ 收盤價，假訊號率更低），
+      圖中 <b style="color:#64748b;">TQQQ 實際價格</b> 以虛線呈現於右側獨立次軸，僅供參考（實際買賣標的仍是 TQQQ）。
+    </p>
     {price_svg}
   </div>
 

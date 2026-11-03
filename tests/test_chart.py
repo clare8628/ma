@@ -33,12 +33,12 @@ class TestChart(unittest.TestCase):
             dates=dates,
             qqq_close=[400.0 + i for i in range(20)],
             qqq_sma_gate=[380.0 for _ in range(20)],
+            qqq_ema_fast=ema_fast,
+            qqq_ema_slow=ema_slow,
+            qqq_ema_chart_short=ema_slow,
+            qqq_sma_chart_long=sma200,
+            qqq_rsi=rsi,
             tqqq_close=close,
-            tqqq_ema_fast=ema_fast,
-            tqqq_ema_slow=ema_slow,
-            tqqq_ema_chart_short=ema_slow,
-            tqqq_sma_chart_long=sma200,
-            tqqq_rsi=rsi,
         )
 
         vix_values = [18.0 + (i * 0.5) for i in range(19)] + [46.5]
@@ -46,12 +46,12 @@ class TestChart(unittest.TestCase):
             dates=dates,
             qqq_close=[400.0 + i for i in range(20)],
             qqq_sma_gate=[380.0 for _ in range(20)],
+            qqq_ema_fast=ema_fast,
+            qqq_ema_slow=ema_slow,
+            qqq_ema_chart_short=ema_slow,
+            qqq_sma_chart_long=sma200,
+            qqq_rsi=rsi,
             tqqq_close=close,
-            tqqq_ema_fast=ema_fast,
-            tqqq_ema_slow=ema_slow,
-            tqqq_ema_chart_short=ema_slow,
-            tqqq_sma_chart_long=sma200,
-            tqqq_rsi=rsi,
             vix_close=vix_values,
         )
 
@@ -61,8 +61,8 @@ class TestChart(unittest.TestCase):
             action_label="持有／觀望（無訊號）",
             matched_rules=[],
             context={
-                "tqqq": {"close": close[-1], "ema_slow_distance_pct": 2.5, "rsi": rsi[-1]},
-                "qqq": {"close": 419.0, "sma200": 380.0},
+                "tqqq": {"close": close[-1]},
+                "qqq": {"close": 419.0, "sma200": 380.0, "ema_slow_distance_pct": 2.5, "rsi": rsi[-1]},
                 "position": {"holding": False},
             },
         )
@@ -117,7 +117,7 @@ class TestChart(unittest.TestCase):
 
     def test_render_rsi_svg(self):
         rsi_svg = _render_rsi_svg(self.ind, window=20)
-        self.assertIn("TQQQ RSI(14)", rsi_svg)
+        self.assertIn("QQQ RSI(14)", rsi_svg)
         self.assertIn("70 過熱止盈", rsi_svg)
         self.assertIn("45 避險", rsi_svg)
         self.assertIn("RSI", rsi_svg)

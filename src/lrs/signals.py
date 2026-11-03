@@ -1,4 +1,7 @@
-"""核心訊號邏輯：整合 QQQ（大盤環境過濾）與 TQQQ（執行觸發）指標，
+"""核心訊號邏輯：進出場訊號（長期SMA框架、短期EMA黃金/死亡交叉、RSI動能）
+全部以 QQQ 價格為計算基礎（經研究驗證假訊號率更低、長期總回報更高，
+詳見 docs/research-qqq-vs-tqqq-signal-basis.md），QQQ 200SMA 同時作為大盤多空閘門；
+實際買賣標的仍是 TQQQ（tqqq_close 僅用於實際成交價顯示與圖表次軸參考）。
 透過 rules_engine 產生「買進/賣出/減碼/止盈/持有」建議，並列出符合的規則。
 """
 from __future__ import annotations
@@ -89,12 +92,12 @@ class DailyIndicators:
     dates: List[str]
     qqq_close: List[float]
     qqq_sma_gate: List[Optional[float]]
+    qqq_ema_fast: List[Optional[float]]
+    qqq_ema_slow: List[Optional[float]]
+    qqq_ema_chart_short: List[Optional[float]]
+    qqq_sma_chart_long: List[Optional[float]]
+    qqq_rsi: List[Optional[float]]
     tqqq_close: List[float]
-    tqqq_ema_fast: List[Optional[float]]
-    tqqq_ema_slow: List[Optional[float]]
-    tqqq_ema_chart_short: List[Optional[float]]
-    tqqq_sma_chart_long: List[Optional[float]]
-    tqqq_rsi: List[Optional[float]]
     vix_close: Optional[List[Optional[float]]] = None
 
 
@@ -139,23 +142,25 @@ def compute_indicators(
     ma = settings["moving_averages"]
     rsi_cfg = settings["rsi"]
 
+    # 訊號基礎：全部計算在 QQQ 收盤價上（進出場觸發與長期框架），
+    # tqqq_close 僅保留作為實際買賣標的之成交價格（顯示/圖表次軸參考用）。
     qqq_sma_gate = indicators.sma(qqq_close, ma["benchmark_gate_sma"])
-    tqqq_ema_fast = indicators.ema(tqqq_close, ma["target_fast_ema"])
-    tqqq_ema_slow = indicators.ema(tqqq_close, ma["target_slow_ema"])
-    tqqq_ema_chart_short = indicators.ema(tqqq_close, ma["chart_short_ema"])
-    tqqq_sma_chart_long = indicators.sma(tqqq_close, ma["chart_long_sma"])
-    tqqq_rsi = indicators.rsi(tqqq_close, rsi_cfg["period"])
+    qqq_ema_fast = indicators.ema(qqq_close, ma["target_fast_ema"])
+    qqq_ema_slow = indicators.ema(qqq_close, ma["target_slow_ema"])
+    qqq_ema_chart_short = indicators.ema(qqq_close, ma["chart_short_ema"])
+    qqq_sma_chart_long = indicators.sma(qqq_close, ma["chart_long_sma"])
+    qqq_rsi = indicators.rsi(qqq_close, rsi_cfg["period"])
 
     return DailyIndicators(
         dates=dates,
         qqq_close=qqq_close,
         qqq_sma_gate=qqq_sma_gate,
+        qqq_ema_fast=qqq_ema_fast,
+        qqq_ema_slow=qqq_ema_slow,
+        qqq_ema_chart_short=qqq_ema_chart_short,
+        qqq_sma_chart_long=qqq_sma_chart_long,
+        qqq_rsi=qqq_rsi,
         tqqq_close=tqqq_close,
-        tqqq_ema_fast=tqqq_ema_fast,
-        tqqq_ema_slow=tqqq_ema_slow,
-        tqqq_ema_chart_short=tqqq_ema_chart_short,
-        tqqq_sma_chart_long=tqqq_sma_chart_long,
-        tqqq_rsi=tqqq_rsi,
         vix_close=vix_close,
     )
 
@@ -166,10 +171,10 @@ def build_context(ind: DailyIndicators, i: int, position: PositionState) -> Dict
             return None
         return series[i - 1] if i > 0 else None
 
-    ema_slow = ind.tqqq_ema_slow[i]
+    ema_slow = ind.qqq_ema_slow[i]
     distance_pct = None
     if ema_slow is not None and ema_slow != 0:
-        distance_pct = (ind.tqqq_close[i] - ema_slow) / ema_slow * 100
+        distance_pct = (ind.qqq_close[i] - ema_slow) / ema_slow * 100
 
     vix_val = ind.vix_close[i] if ind.vix_close is not None else None
     vix_prev = prev(ind.vix_close) if ind.vix_close is not None else None
@@ -180,15 +185,15 @@ def build_context(ind: DailyIndicators, i: int, position: PositionState) -> Dict
             "close": ind.qqq_close[i],
             "sma200": ind.qqq_sma_gate[i],
             "sma200_prev": prev(ind.qqq_sma_gate),
+            "ema_fast": ind.qqq_ema_fast[i],
+            "ema_fast_prev": prev(ind.qqq_ema_fast),
+            "ema_slow": ema_slow,
+            "ema_slow_prev": prev(ind.qqq_ema_slow),
+            "rsi": ind.qqq_rsi[i],
+            "ema_slow_distance_pct": distance_pct,
         },
         "tqqq": {
             "close": ind.tqqq_close[i],
-            "ema_fast": ind.tqqq_ema_fast[i],
-            "ema_fast_prev": prev(ind.tqqq_ema_fast),
-            "ema_slow": ema_slow,
-            "ema_slow_prev": prev(ind.tqqq_ema_slow),
-            "rsi": ind.tqqq_rsi[i],
-            "ema_slow_distance_pct": distance_pct,
         },
         "vix": {
             "close": vix_val,

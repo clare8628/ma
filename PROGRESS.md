@@ -44,5 +44,16 @@
     - 於單元測試中正式加入 Node.js 語法驗證（`node --check`）防護機制，徹底防範前端語法漏網之魚
   - 單元測試全面擴充 (41/41 通過，包含 Crosshair 游標導引、各指標高亮點、Tooltip 前端互動斷言與 JS 語法檢查)
 
-測試覆蓋率：indicators / rules_engine / signals / rebalance / chart 五大模組皆有測試 (41/41 通過)。
+- [x] [MAM-5] 研究：買賣TQQQ訊號基礎 TQQQ自身均線 vs QQQ均線，何者較優
+  - 新增 `src/lrs/backtest.py`（雙基礎回測引擎）+ `scripts/compare_signal_basis.py`（可重現比較腳本）
+  - 用全歷史快取資料(2010-2026, 4203日)實測：勝率相近(33.8% vs 35.1%)，但QQQ基礎均勝幅度(+24.6% vs +16.9%)、總回報(5899% vs 1387%)、假交叉率(19% vs 27%)明顯優於TQQQ自身基礎
+  - 結論與限制詳見 `docs/research-qqq-vs-tqqq-signal-basis.md`；**僅研究評估，未變更 config/rules.json 正式邏輯**，待使用者決定是否採用
+
+- [x] [MAM-5 追加指示] 正式採用 QQQ 訊號基礎，TQQQ 實際價格虛線參考呈現 (v1.6.0)
+  - `signals.py`：EMA10/20、SMA200框架、RSI(14) 全改算於 QQQ 收盤價；`tqqq.close` 僅保留實際成交價
+  - `config/rules.json`：R2~R6 條件欄位改為 `qqq.*`，訊息文字同步更新（買賣標的仍是 TQQQ）
+  - `chart.py`：主圖改以 QQQ 為主線，TQQQ 實際價格以虛線呈現於右側獨立次軸（線性/對數雙模式皆支援），新增專屬圖層開關、Price Pill、Crosshair 圓點與 Tooltip 欄位
+  - Playwright 截圖驗證圖表渲染與滑鼠懸浮互動正常、無 console 錯誤；單元測試 45/45 通過
+
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart / backtest 六大模組皆有測試 (45/45 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。
