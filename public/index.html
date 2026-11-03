@@ -1214,12 +1214,159 @@ function initHoverEvents() {
   }
 }
 
+// === 持倉金額即時調整與試算 (財富種植園策略) ===
+var allocConfig = {
+  target: {
+    cash: 55.00,
+    qqq: 0.00,
+    tqqq: 45.00
+  },
+  defaultAmounts: {
+    cash: 2314.00,
+    qqq: 22928.00,
+    tqqq: 6065.00
+  },
+  threshold: 5
+};
+
+function onAllocationAmountChange() {
+  var cInput = document.getElementById('input-amt-cash');
+  var qInput = document.getElementById('input-amt-qqq');
+  var tInput = document.getElementById('input-amt-tqqq');
+  if (!cInput || !qInput || !tInput) return;
+
+  var c = parseFloat(cInput.value) || 0;
+  var q = parseFloat(qInput.value) || 0;
+  var t = parseFloat(tInput.value) || 0;
+  var tot = c + q + t;
+
+  var totLabel = document.getElementById('alloc-total-usd-label');
+  if (totLabel) {
+    totLabel.textContent = '$' + tot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  var cPct = tot > 0 ? (c / tot * 100) : 0;
+  var qPct = tot > 0 ? (q / tot * 100) : 0;
+  var tPct = tot > 0 ? (t / tot * 100) : 0;
+
+  var cFill = document.getElementById('actual-cash-bar-fill');
+  var qFill = document.getElementById('actual-qqq-bar-fill');
+  var tFill = document.getElementById('actual-tqqq-bar-fill');
+  var cLbl = document.getElementById('actual-cash-pct-label');
+  var qLbl = document.getElementById('actual-qqq-pct-label');
+  var tLbl = document.getElementById('actual-tqqq-pct-label');
+
+  if (cFill) cFill.style.width = Math.max(0, Math.min(100, cPct)).toFixed(1) + '%';
+  if (qFill) qFill.style.width = Math.max(0, Math.min(100, qPct)).toFixed(1) + '%';
+  if (tFill) tFill.style.width = Math.max(0, Math.min(100, tPct)).toFixed(1) + '%';
+  if (cLbl) cLbl.textContent = cPct.toFixed(1) + '%';
+  if (qLbl) qLbl.textContent = qPct.toFixed(1) + '%';
+  if (tLbl) tLbl.textContent = tPct.toFixed(1) + '%';
+
+  // 偏離度與再平衡檢查
+  var driftC = cPct - allocConfig.target.cash;
+  var driftQ = qPct - allocConfig.target.qqq;
+  var driftT = tPct - allocConfig.target.tqqq;
+  var th = allocConfig.threshold;
+
+  var needsRebalance = (Math.abs(driftC) > th || Math.abs(driftQ) > th || Math.abs(driftT) > th);
+  var banner = document.getElementById('alloc-rebalance-banner');
+  var bannerText = document.getElementById('alloc-rebalance-text');
+  var actCard = document.getElementById('alloc-actions-container');
+  var actList = document.getElementById('alloc-actions-list');
+
+  if (needsRebalance && tot > 0) {
+    var parts = [];
+    if (Math.abs(driftQ) > th) parts.push('QQQ' + (driftQ > 0 ? '超重' : '低配') + Math.abs(driftQ).toFixed(1) + '%');
+    if (Math.abs(driftT) > th) parts.push('TQQQ' + (driftT > 0 ? '超重' : '低配') + Math.abs(driftT).toFixed(1) + '%');
+    if (Math.abs(driftC) > th) parts.push('現金' + (driftC > 0 ? '超重' : '低配') + Math.abs(driftC).toFixed(1) + '%');
+
+    if (banner) banner.style.display = 'block';
+    if (bannerText) {
+      bannerText.textContent = '再平衡警示（門檻 ±' + th + '%）：' + parts.join('; ') + '。實際與目標權重偏離過大，建議調整部位。';
+    }
+
+    // 計算建議買賣金額 (目標金額 - 目前金額)
+    var targetCUsd = tot * (allocConfig.target.cash / 100);
+    var targetQUsd = tot * (allocConfig.target.qqq / 100);
+    var targetTUsd = tot * (allocConfig.target.tqqq / 100);
+
+    var diffC = targetCUsd - c;
+    var diffQ = targetQUsd - q;
+    var diffT = targetTUsd - t;
+
+    var actHtml = '<ul style="margin:4px 0 0 18px;padding:0;">';
+    function fmtAct(sym, diff, pctDrift) {
+      if (Math.abs(pctDrift) <= th) return '';
+      if (diff > 0) {
+        return '<li>' + sym + ' 低配 ' + Math.abs(pctDrift).toFixed(1) + '%：建議 <b>加碼/買入 $' + Math.round(diff).toLocaleString('en-US') + '</b> (目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+      } else {
+        return '<li>' + sym + ' 超重 ' + Math.abs(pctDrift).toFixed(1) + '%：建議 <b>減碼/賣出 $' + Math.round(Math.abs(diff)).toLocaleString('en-US') + '</b> (目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+      }
+    }
+    if (Math.abs(driftQ) > th) {
+      actHtml += '<li>QQQ ' + (driftQ > 0 ? '超重' : '低配') + ' ' + Math.abs(driftQ).toFixed(1) + '%：建議 <b style="color:' + (diffQ > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffQ > 0 ? '加碼買入' : '減碼賣出') + ' $' + Math.round(Math.abs(diffQ)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetQUsd).toLocaleString('en-US') + ')</li>';
+    }
+    if (Math.abs(driftT) > th) {
+      actHtml += '<li>TQQQ ' + (driftT > 0 ? '超重' : '低配') + ' ' + Math.abs(driftT).toFixed(1) + '%：建議 <b style="color:' + (diffT > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffT > 0 ? '加碼買入' : '減碼賣出') + ' $' + Math.round(Math.abs(diffT)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetTUsd).toLocaleString('en-US') + ')</li>';
+    }
+    if (Math.abs(driftC) > th) {
+      actHtml += '<li>現金 ' + (driftC > 0 ? '超重' : '低配') + ' ' + Math.abs(driftC).toFixed(1) + '%：建議 <b style="color:' + (diffC > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffC > 0 ? '補足保留現金' : '挪用部分現金加碼標的') + ' $' + Math.round(Math.abs(diffC)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+    }
+    actHtml += '</ul>';
+
+    if (actCard) actCard.style.display = 'block';
+    if (actList) actList.innerHTML = actHtml;
+  } else {
+    if (banner) banner.style.display = 'none';
+    if (actCard) actCard.style.display = 'none';
+  }
+}
+
+function saveAllocationToLocal() {
+  var c = document.getElementById('input-amt-cash').value;
+  var q = document.getElementById('input-amt-qqq').value;
+  var t = document.getElementById('input-amt-tqqq').value;
+  localStorage.setItem('lrs_alloc_amounts', JSON.stringify({ cash: c, qqq: q, tqqq: t }));
+  var tag = document.getElementById('alloc-actual-source-tag');
+  if (tag) tag.textContent = '已保存於此瀏覽器';
+  alert('持倉金額已保存於本機瀏覽器！下次開啟將自動帶入此組金額。');
+}
+
+function resetAllocationDefault() {
+  document.getElementById('input-amt-cash').value = allocConfig.defaultAmounts.cash;
+  document.getElementById('input-amt-qqq').value = allocConfig.defaultAmounts.qqq;
+  document.getElementById('input-amt-tqqq').value = allocConfig.defaultAmounts.tqqq;
+  localStorage.removeItem('lrs_alloc_amounts');
+  var tag = document.getElementById('alloc-actual-source-tag');
+  if (tag) tag.textContent = '系統快照預設值';
+  onAllocationAmountChange();
+}
+
+function initSavedAllocation() {
+  try {
+    var saved = localStorage.getItem('lrs_alloc_amounts');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      if (parsed && parsed.cash !== undefined) {
+        document.getElementById('input-amt-cash').value = parsed.cash;
+        document.getElementById('input-amt-qqq').value = parsed.qqq;
+        document.getElementById('input-amt-tqqq').value = parsed.tqqq;
+        var tag = document.getElementById('alloc-actual-source-tag');
+        if (tag) tag.textContent = '載入自瀏覽器暫存';
+      }
+    }
+  } catch(e) {}
+  onAllocationAmountChange();
+}
+
 function bootChart() {
   if (chartData) {
     var initRange = chartData.default_range || '1y';
     setChartRange(initRange);
   }
   initHoverEvents();
+  initSavedAllocation();
 }
 
 if (document.readyState === 'loading') {
@@ -1237,7 +1384,7 @@ if (document.readyState === 'loading') {
     </div>
     <div class="version-badge-group">
       <span class="badge-version">平台版本：v1.7.0</span>
-      <span class="badge-timestamp">產出時間戳記：2026-11-03 21:57:17</span>
+      <span class="badge-timestamp">產出時間戳記：2026-11-03 22:24:30</span>
       <span class="badge-inception">全歷史時間軸：2010-02-11 至 2026-11-02（自 TQQQ 成立開始）</span>
     </div>
   </div>
@@ -1428,78 +1575,131 @@ if (document.readyState === 'loading') {
           多頭回落>10%：機動倉全倉TQQQ（攻擊模式）
         </span>
       </div>
+
+      <div id="alloc-rebalance-banner" style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;display:block;">
+        ⚖️ <b>再平衡提醒</b>：<span id="alloc-rebalance-text">[2026-11-02] 多頭回落>10%：機動倉全倉TQQQ（攻擊模式）。 再平衡警示（門檻 ±5%）：QQQ超重73.2%; TQQQ低配25.6%; CASH低配47.6%。目標 現金55.0%/QQQ0.0%/TQQQ45.0%，實際 現金7.4%/QQQ73.2%/TQQQ19.4%，建議賣出超重資產、買入低配資產拉回目標權重。 建議再平衡調整金額：CASH買入 $14905; QQQ賣出 $22928; TQQQ買入 $8023。</span>
+      </div>
+
       
-        <div style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;">
-          ⚖️ <b>再平衡提醒</b>：[2026-11-02] 多頭回落>10%：機動倉全倉TQQQ（攻擊模式）。 再平衡警示（門檻 ±5%）：QQQ超重73.2%; TQQQ低配25.6%; CASH低配47.6%。目標 現金55.0%/QQQ0.0%/TQQQ45.0%，實際 現金7.4%/QQQ73.2%/TQQQ19.4%，建議賣出超重資產、買入低配資產拉回目標權重。
+
+      <!-- 持倉金額即時調整輸入面板 -->
+      <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <div style="font-weight:700;font-size:13px;color:#1e293b;display:flex;align-items:center;gap:6px;">
+            <span>💵 目前持倉金額調整 (美金 USD)</span>
+            <span style="font-weight:400;font-size:12px;color:#64748b;">修改後即時連動計算權重與再平衡差額</span>
+          </div>
+          <div style="font-size:12px;color:#0f172a;font-weight:700;">
+            資產總額：<span id="alloc-total-usd-label" style="color:#0284c7;font-size:14px;">$31,307.00</span>
+          </div>
         </div>
-        
-      
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;align-items:center;">
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">現金 / SGOV (USD)</label>
+            <input type="number" id="input-amt-cash" value="2314.00" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#334155;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">QQQ 市值 (USD)</label>
+            <input type="number" id="input-amt-qqq" value="22928.00" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#1d4ed8;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">TQQQ 市值 (USD)</label>
+            <input type="number" id="input-amt-tqqq" value="6065.00" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#b91c1c;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;padding-top:16px;">
+            <button type="button" onclick="resetAllocationDefault()"
+              style="padding:7px 12px;background:#e2e8f0;color:#334155;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+              重設初始
+            </button>
+            <button type="button" onclick="saveAllocationToLocal()"
+              style="padding:7px 12px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+              記住金額
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:12px;">
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
           <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（已套用鐵律一/二後之今日應持倉位）</div>
           
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>現金</span><span style="font-weight:700;">55.0%</span>
+            <span>現金</span><span id="target-cash-pct-label" style="font-weight:700;">55.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#64748b;height:100%;width:55.0%;"></div>
+            <div id="target-cash-bar-fill" style="background:#64748b;height:100%;width:55.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>QQQ</span><span style="font-weight:700;">0.0%</span>
+            <span>QQQ</span><span id="target-qqq-pct-label" style="font-weight:700;">0.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#2563eb;height:100%;width:0.0%;"></div>
+            <div id="target-qqq-bar-fill" style="background:#2563eb;height:100%;width:0.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>TQQQ</span><span style="font-weight:700;">45.0%</span>
+            <span>TQQQ</span><span id="target-tqqq-pct-label" style="font-weight:700;">45.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#dc2626;height:100%;width:45.0%;"></div>
+            <div id="target-tqqq-bar-fill" style="background:#dc2626;height:100%;width:45.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         </div>
-        
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
-          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">實際持倉權重（手動快照）</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:12px;color:#64748b;font-weight:600;">實際持倉權重</div>
+            <div id="alloc-actual-source-tag" style="font-size:11px;color:#0284c7;background:#e0f2fe;padding:2px 6px;border-radius:4px;">即時計算中</div>
+          </div>
           
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>現金</span><span style="font-weight:700;">7.4%</span>
+            <span>現金 (SGOV/活存)</span><span id="actual-cash-pct-label" style="font-weight:700;">7.4%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#64748b;height:100%;width:7.4%;"></div>
+            <div id="actual-cash-bar-fill" style="background:#64748b;height:100%;width:7.4%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>QQQ</span><span style="font-weight:700;">73.2%</span>
+            <span>QQQ</span><span id="actual-qqq-pct-label" style="font-weight:700;">73.2%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#2563eb;height:100%;width:73.2%;"></div>
+            <div id="actual-qqq-bar-fill" style="background:#2563eb;height:100%;width:73.2%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>TQQQ</span><span style="font-weight:700;">19.4%</span>
+            <span>TQQQ</span><span id="actual-tqqq-pct-label" style="font-weight:700;">19.4%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:#dc2626;height:100%;width:19.4%;"></div>
+            <div id="actual-tqqq-bar-fill" style="background:#dc2626;height:100%;width:19.4%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         </div>
-        
       </div>
+
+      <!-- 即時建議調倉金額試算明細卡 -->
+      <div id="alloc-actions-container" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:12px;display:none;">
+        <div style="font-weight:700;font-size:12.5px;color:#0f172a;margin-bottom:6px;">⚖️ 建議再平衡調倉細項 (拉回目標權重)：</div>
+        <div id="alloc-actions-list" style="font-size:12.5px;color:#334155;line-height:1.7;"></div>
+      </div>
+
       <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
         💡 10%底倉（現金，除非QQQ從高點崩跌逾30%否則不動用）+ 90%機動倉依QQQ的200日均線多空、
         距歷史高點回落幅度、20日均線與其斜率，在QQQ/TQQQ/現金間切換（規則與參數見
@@ -1913,7 +2113,7 @@ if (document.readyState === 'loading') {
     
 
   <footer>
-    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.7.0 • 報表時間戳記：2026-11-03 21:57:17 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
+    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.7.0 • 報表時間戳記：2026-11-03 22:24:30 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
 
   <!-- 滑鼠懸浮浮動資訊卡 (Tooltip，呈現當日價格、VIX指數等精確數值) -->
