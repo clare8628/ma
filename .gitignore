@@ -2,6 +2,7 @@ state/cache/
 state/report.html
 state/position.json
 state/asset_snapshot.json
+state/allocation_snapshot.json
 __pycache__/
 *.pyc
 .venv/

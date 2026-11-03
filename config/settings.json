@@ -30,6 +30,11 @@
   "overheat_trim_fraction_min": 0.33,
   "overheat_trim_fraction_max": 0.5,
   "defensive_reduce_fraction": 0.5,
+  "allocation": {
+    "description": "現金+QQQ+TQQQ三資產配置（簡化版，用現金與QQQ平衡TQQQ波動/回撤）。target_weights為基礎目標權重，依訊號動作縮放TQQQ曝險；實際權重偏離超過drift_threshold_pct即提醒再平衡。見 docs/allocation-strategy.md",
+    "target_weights": {"cash": 10, "qqq": 45, "tqqq": 45},
+    "drift_threshold_pct": 5
+  },
   "rebalance": {
     "month": 11,
     "day": 1,

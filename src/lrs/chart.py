@@ -19,10 +19,11 @@ import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import allocation
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
-VERSION = "v1.6.0"
+VERSION = "v1.7.0"
 
 # 擴充畫布寬度與高度以充分利用寬螢幕與兩側空間
 WIDTH = 1380
@@ -863,6 +864,88 @@ def _render_vix_analysis_block(ind: DailyIndicators, recommendation: Recommendat
     """
 
 
+def _render_allocation_block(recommendation: Recommendation, settings: Optional[dict]) -> str:
+    """繪製現金/QQQ/TQQQ三資產配置卡片（簡化版，見 docs/allocation-strategy.md）。"""
+    check = allocation.check_allocation(recommendation.action, settings)
+    target = check.target
+    actual = check.actual
+
+    def _bar(label: str, pct: float, color: str) -> str:
+        return f"""
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>{label}</span><span style="font-weight:700;">{pct:.1f}%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:{color};height:100%;width:{max(0, min(100, pct)):.1f}%;"></div>
+          </div>
+        </div>
+        """
+
+    target_bars = (
+        _bar("現金", target["cash"], "#64748b")
+        + _bar("QQQ", target["qqq"], "#2563eb")
+        + _bar("TQQQ", target["tqqq"], "#dc2626")
+    )
+
+    actual_block = ""
+    if actual is not None:
+        actual_bars = (
+            _bar("現金", actual["cash"], "#64748b")
+            + _bar("QQQ", actual["qqq"], "#2563eb")
+            + _bar("TQQQ", actual["tqqq"], "#dc2626")
+        )
+        actual_block = f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">實際持倉權重（手動快照）</div>
+          {actual_bars}
+        </div>
+        """
+    else:
+        actual_block = f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;display:flex;align-items:center;">
+          <div style="font-size:13px;color:#475569;line-height:1.6;">
+            尚無實際持倉快照。請於 <code>{allocation.ALLOCATION_SNAPSHOT_PATH}</code> 填入
+            <code>cash_pct / qqq_pct / tqqq_pct</code> 以啟用偏離度檢核。
+          </div>
+        </div>
+        """
+
+    banner = ""
+    if check.needs_rebalance:
+        banner = f"""
+        <div style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;">
+          ⚖️ <b>再平衡提醒</b>：{check.message}
+        </div>
+        """
+
+    return f"""
+    <div class="card" id="allocation-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:18px;color:#0f172a;">現金 / QQQ / TQQQ 三資產配置（簡化版）</h3>
+        <span style="font-size:12px;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:12px;border:1px solid #cbd5e1;">
+          用現金與QQQ平衡TQQQ波動 • 依訊號動作調整目標權重
+        </span>
+      </div>
+      {banner}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:12px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（依本日建議動作「{recommendation.action_label}」計算）</div>
+          {target_bars}
+        </div>
+        {actual_block}
+      </div>
+      <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
+        💡 基礎目標權重預設 10% 現金 / 45% QQQ / 45% TQQQ（可於 config/settings.json 的
+        <code>allocation.target_weights</code> 調整）。全數出場訊號（死亡交叉/大盤空頭）目標轉為100%現金；
+        減碼/止盈訊號會按比例縮減TQQQ目標權重，差額併入現金。實際權重與目標偏離超過
+        ±{(settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)}% 時提醒再平衡。
+        概念簡化說明見 <code>docs/allocation-strategy.md</code>。
+      </div>
+    </div>
+    """
+
+
 def _render_events_table(events: List[dict], dates: List[str]) -> str:
     """產生自 TQQQ 成立以來重大金融事件時序紀錄表。"""
     if not events:
@@ -965,6 +1048,7 @@ def render_html_report(
     rules_block_html = _render_rules_block(rules, recommendation)
     metrics_panel_html = _render_metrics_panel(ind, recommendation)
     vix_analysis_html = _render_vix_analysis_block(ind, recommendation)
+    allocation_html = _render_allocation_block(recommendation, settings)
     events_table_html = _render_events_table(events, ind.dates)
 
     rules_html = "".join(
@@ -2260,6 +2344,9 @@ if (document.readyState === 'loading') {{
 
   <!-- 4. VIX 恐慌指數綜合判斷與歷史抄底勝率分析 -->
   {vix_analysis_html}
+
+  <!-- 4.5 現金/QQQ/TQQQ 三資產配置（簡化版） -->
+  {allocation_html}
 
   <!-- 5. 價格與均線區塊 -->
   <div class="card">

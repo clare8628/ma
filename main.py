@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lrs import data, position_state, rebalance, signals  # noqa: E402
+from lrs import allocation, data, position_state, rebalance, signals  # noqa: E402
 from lrs.chart import render_html_report  # noqa: E402
 from lrs.rules_engine import load_rules  # noqa: E402
 
@@ -98,6 +98,10 @@ def main() -> int:
     print(f"最新數值: {vix_close_str} — {vix_ctx.get('label', 'N/A')}")
     print(f"情緒評估: {vix_ctx.get('description', 'N/A')}")
     print(f"策略指引: {vix_ctx.get('guidance', 'N/A')}")
+
+    alloc = allocation.check_allocation(rec.action, settings)
+    print("\n=== 現金/QQQ/TQQQ 三資產配置檢核 ===")
+    print(alloc.message)
 
     rb = rebalance.check_rebalance(settings)
     print("\n=== 年度再平衡檢核 (11/1) ===")

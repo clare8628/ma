@@ -32,6 +32,7 @@ src/lrs/
   data.py               Yahoo Finance chart API 擷取 + 本地快取 + CSV 離線載入
   rules_engine.py        資料驅動規則引擎（>, <, crosses_above, crosses_below ...）
   signals.py             整合 QQQ/TQQQ 指標、建立 context、產生最終建議
+  allocation.py           現金/QQQ/TQQQ三資產配置（簡化版，見 docs/allocation-strategy.md）
   rebalance.py            每年 11/1 再平衡窗口檢核
   chart.py               零相依 SVG 圖表產生器（寫出 state/report.html）
   position_state.py       本地持倉狀態（JSON），供風控規則使用
@@ -68,6 +69,15 @@ main.py                  CLI 入口
   - **觀察區間自由切換**：(1M/3M/6M/1Y/2Y/5Y/10Y/全歷史/情境跳轉)，前端毫秒級即時重繪。
   - **座標模式與圖層切換**：支援線性座標 (Linear) 與對數座標 (Log Scale) 即時切換、均線與 VIX 曲線圖層自由開關。
   - **Price Pills**：右側即時均線與 VIX 動態定位標籤，具備自動防重疊演算法。
+
+## 現金 / QQQ / TQQQ 三資產配置（簡化版）
+
+以現金與 QQQ 搭配 TQQQ 做組合配置，用以壓低單押 TQQQ 的波動與回撤
+（概念研究來源與簡化方式見 `docs/allocation-strategy.md`）。預設基礎目標權重
+**10% 現金 / 45% QQQ / 45% TQQQ**（`config/settings.json` → `allocation`），
+依既有訊號動作縮放 TQQQ 曝險（出場→100%現金、減碼/止盈→TQQQ目標按比例縮減），
+並在實際持倉（`state/allocation_snapshot.json`，使用者手動填寫）偏離目標超過
+`drift_threshold_pct`（預設 ±5%）時提醒再平衡。CLI 與 HTML 報告皆會顯示此檢核。
 
 ## 年度再平衡 (11/1) 與資產配置站整合 — 已知限制
 
