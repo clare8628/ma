@@ -1236,8 +1236,8 @@ if (document.readyState === 'loading') {
       <div style="font-size:13px;color:#64748b;margin-top:2px;">以大盤長天期均線與高槓桿標的雙 EMA 觸發之多空輪換架構</div>
     </div>
     <div class="version-badge-group">
-      <span class="badge-version">平台版本：v1.6.0</span>
-      <span class="badge-timestamp">產出時間戳記：2026-11-03 20:36:53</span>
+      <span class="badge-version">平台版本：v1.7.0</span>
+      <span class="badge-timestamp">產出時間戳記：2026-11-03 21:57:17</span>
       <span class="badge-inception">全歷史時間軸：2010-02-11 至 2026-11-02（自 TQQQ 成立開始）</span>
     </div>
   </div>
@@ -1415,6 +1415,99 @@ if (document.readyState === 'loading') {
 
       <div style="font-size:13px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
         💡 <b>量化研究依據</b>：歷史統計顯示，當 VIX 超過 45 時，代表市場流動性遭遇非理性踩踏與全市場斷頭拋售，實質上賣壓已近極限（Capitulation）。在歷史所有 VIX 突破 45 的情境中，隨後 3 個月、6 個月與 1 年期間標普與那斯達克指數的獲利勝率超過 90%~100%，具備極高的不對稱風險報酬比。因此本系統將 VIX &ge; 45 賦予最高優先級抄底訊號 (BUY_DIP_PANIC)，不受大盤常規 200SMA 跌破限制。
+      </div>
+    </div>
+    
+
+  <!-- 4.5 現金/QQQ/TQQQ 三資產配置（簡化版） -->
+  
+    <div class="card" id="allocation-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:18px;color:#0f172a;">現金 / QQQ / TQQQ 三資產配置（財富種植園策略）</h3>
+        <span style="font-size:12px;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:12px;border:1px solid #cbd5e1;">
+          多頭回落>10%：機動倉全倉TQQQ（攻擊模式）
+        </span>
+      </div>
+      
+        <div style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;">
+          ⚖️ <b>再平衡提醒</b>：[2026-11-02] 多頭回落>10%：機動倉全倉TQQQ（攻擊模式）。 再平衡警示（門檻 ±5%）：QQQ超重73.2%; TQQQ低配25.6%; CASH低配47.6%。目標 現金55.0%/QQQ0.0%/TQQQ45.0%，實際 現金7.4%/QQQ73.2%/TQQQ19.4%，建議賣出超重資產、買入低配資產拉回目標權重。
+        </div>
+        
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:12px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（已套用鐵律一/二後之今日應持倉位）</div>
+          
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>現金</span><span style="font-weight:700;">55.0%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#64748b;height:100%;width:55.0%;"></div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>QQQ</span><span style="font-weight:700;">0.0%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#2563eb;height:100%;width:0.0%;"></div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>TQQQ</span><span style="font-weight:700;">45.0%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#dc2626;height:100%;width:45.0%;"></div>
+          </div>
+        </div>
+        
+        </div>
+        
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">實際持倉權重（手動快照）</div>
+          
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>現金</span><span style="font-weight:700;">7.4%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#64748b;height:100%;width:7.4%;"></div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>QQQ</span><span style="font-weight:700;">73.2%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#2563eb;height:100%;width:73.2%;"></div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
+            <span>TQQQ</span><span style="font-weight:700;">19.4%</span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:#dc2626;height:100%;width:19.4%;"></div>
+          </div>
+        </div>
+        
+        </div>
+        
+      </div>
+      <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
+        💡 10%底倉（現金，除非QQQ從高點崩跌逾30%否則不動用）+ 90%機動倉依QQQ的200日均線多空、
+        距歷史高點回落幅度、20日均線與其斜率，在QQQ/TQQQ/現金間切換（規則與參數見
+        <code>config/settings.json</code> 的 <code>allocation</code> 區塊）。鐵律一「今天賣明天買」：
+        加碼訊號延後一天執行；鐵律二「防假反彈」：由防守轉攻擊須防守滿
+        2天且20日均線斜率向上。
+        實際權重與目標偏離超過±5%時提醒再平衡。
+        完整規則來源與假設說明見 <code>docs/allocation-strategy.md</code>。
       </div>
     </div>
     
@@ -1820,7 +1913,7 @@ if (document.readyState === 'loading') {
     
 
   <footer>
-    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.6.0 • 報表時間戳記：2026-11-03 20:36:53 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
+    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.7.0 • 報表時間戳記：2026-11-03 21:57:17 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
 
   <!-- 滑鼠懸浮浮動資訊卡 (Tooltip，呈現當日價格、VIX指數等精確數值) -->

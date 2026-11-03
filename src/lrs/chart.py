@@ -865,58 +865,38 @@ def _render_vix_analysis_block(ind: DailyIndicators, recommendation: Recommendat
 
 
 def _render_allocation_block(check: "allocation.AllocationCheck", settings: Optional[dict]) -> str:
-    """繪製現金/QQQ/TQQQ三資產配置卡片（財富種植園策略，見 docs/allocation-strategy.md）。"""
+    """繪製現金/QQQ/TQQQ三資產配置卡片（財富種植園策略，含可互動即時輸入與試算面板）。"""
     target = check.target
-    actual = check.actual
+    actual = check.actual or {"cash": 0.0, "qqq": 0.0, "tqqq": 0.0}
+    amounts = check.amounts or {"cash": 0.0, "qqq": 0.0, "tqqq": 0.0, "total": 0.0}
+    threshold = (settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)
 
-    def _bar(label: str, pct: float, color: str) -> str:
+    def _bar(id_prefix: str, label: str, pct: float, color: str) -> str:
         return f"""
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>{label}</span><span style="font-weight:700;">{pct:.1f}%</span>
+            <span>{label}</span><span id="{id_prefix}-pct-label" style="font-weight:700;">{pct:.1f}%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div style="background:{color};height:100%;width:{max(0, min(100, pct)):.1f}%;"></div>
+            <div id="{id_prefix}-bar-fill" style="background:{color};height:100%;width:{max(0, min(100, pct)):.1f}%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         """
 
     target_bars = (
-        _bar("現金", target["cash"], "#64748b")
-        + _bar("QQQ", target["qqq"], "#2563eb")
-        + _bar("TQQQ", target["tqqq"], "#dc2626")
+        _bar("target-cash", "現金", target["cash"], "#64748b")
+        + _bar("target-qqq", "QQQ", target["qqq"], "#2563eb")
+        + _bar("target-tqqq", "TQQQ", target["tqqq"], "#dc2626")
     )
 
-    actual_block = ""
-    if actual is not None:
-        actual_bars = (
-            _bar("現金", actual["cash"], "#64748b")
-            + _bar("QQQ", actual["qqq"], "#2563eb")
-            + _bar("TQQQ", actual["tqqq"], "#dc2626")
-        )
-        actual_block = f"""
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
-          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">實際持倉權重（手動快照）</div>
-          {actual_bars}
-        </div>
-        """
-    else:
-        actual_block = f"""
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;display:flex;align-items:center;">
-          <div style="font-size:13px;color:#475569;line-height:1.6;">
-            尚無實際持倉快照。請於 <code>{allocation.ALLOCATION_SNAPSHOT_PATH}</code> 填入
-            <code>cash_pct / qqq_pct / tqqq_pct</code> 以啟用偏離度檢核。
-          </div>
-        </div>
-        """
+    actual_bars = (
+        _bar("actual-cash", "現金 (SGOV/活存)", actual["cash"], "#64748b")
+        + _bar("actual-qqq", "QQQ", actual["qqq"], "#2563eb")
+        + _bar("actual-tqqq", "TQQQ", actual["tqqq"], "#dc2626")
+    )
 
-    banner = ""
-    if check.needs_rebalance:
-        banner = f"""
-        <div style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;">
-          ⚖️ <b>再平衡提醒</b>：{check.message}
-        </div>
-        """
+    banner_style = "display:block;" if check.needs_rebalance else "display:none;"
+    banner_text = check.message if check.needs_rebalance else ""
 
     note_html = ""
     if check.note:
@@ -934,22 +914,84 @@ def _render_allocation_block(check: "allocation.AllocationCheck", settings: Opti
           {check.regime_label}
         </span>
       </div>
-      {banner}
+
+      <div id="alloc-rebalance-banner" style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;{banner_style}">
+        ⚖️ <b>再平衡提醒</b>：<span id="alloc-rebalance-text">{banner_text}</span>
+      </div>
+
       {note_html}
+
+      <!-- 持倉金額即時調整輸入面板 -->
+      <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <div style="font-weight:700;font-size:13px;color:#1e293b;display:flex;align-items:center;gap:6px;">
+            <span>💵 目前持倉金額調整 (美金 USD)</span>
+            <span style="font-weight:400;font-size:12px;color:#64748b;">修改後即時連動計算權重與再平衡差額</span>
+          </div>
+          <div style="font-size:12px;color:#0f172a;font-weight:700;">
+            資產總額：<span id="alloc-total-usd-label" style="color:#0284c7;font-size:14px;">${amounts.get('total', 0):,.2f}</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;align-items:center;">
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">現金 / SGOV (USD)</label>
+            <input type="number" id="input-amt-cash" value="{amounts.get('cash', 0):.2f}" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#334155;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">QQQ 市值 (USD)</label>
+            <input type="number" id="input-amt-qqq" value="{amounts.get('qqq', 0):.2f}" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#1d4ed8;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div>
+            <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">TQQQ 市值 (USD)</label>
+            <input type="number" id="input-amt-tqqq" value="{amounts.get('tqqq', 0):.2f}" step="10" min="0"
+              style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#b91c1c;"
+              oninput="onAllocationAmountChange()">
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;padding-top:16px;">
+            <button type="button" onclick="resetAllocationDefault()"
+              style="padding:7px 12px;background:#e2e8f0;color:#334155;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+              重設初始
+            </button>
+            <button type="button" onclick="saveAllocationToLocal()"
+              style="padding:7px 12px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+              記住金額
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:12px;">
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
           <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（已套用鐵律一/二後之今日應持倉位）</div>
           {target_bars}
         </div>
-        {actual_block}
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:12px;color:#64748b;font-weight:600;">實際持倉權重</div>
+            <div id="alloc-actual-source-tag" style="font-size:11px;color:#0284c7;background:#e0f2fe;padding:2px 6px;border-radius:4px;">即時計算中</div>
+          </div>
+          {actual_bars}
+        </div>
       </div>
+
+      <!-- 即時建議調倉金額試算明細卡 -->
+      <div id="alloc-actions-container" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:12px;display:none;">
+        <div style="font-weight:700;font-size:12.5px;color:#0f172a;margin-bottom:6px;">⚖️ 建議再平衡調倉細項 (拉回目標權重)：</div>
+        <div id="alloc-actions-list" style="font-size:12.5px;color:#334155;line-height:1.7;"></div>
+      </div>
+
       <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
         💡 10%底倉（現金，除非QQQ從高點崩跌逾30%否則不動用）+ 90%機動倉依QQQ的200日均線多空、
         距歷史高點回落幅度、20日均線與其斜率，在QQQ/TQQQ/現金間切換（規則與參數見
         <code>config/settings.json</code> 的 <code>allocation</code> 區塊）。鐵律一「今天賣明天買」：
         加碼訊號延後一天執行；鐵律二「防假反彈」：由防守轉攻擊須防守滿
         {(settings or {}).get("allocation", {}).get("thresholds", {}).get("defensive_min_days", 2)}天且20日均線斜率向上。
-        實際權重與目標偏離超過±{(settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)}%時提醒再平衡。
+        實際權重與目標偏離超過±{threshold}%時提醒再平衡。
         完整規則來源與假設說明見 <code>docs/allocation-strategy.md</code>。
       </div>
     </div>
@@ -1064,6 +1106,9 @@ def render_html_report(
         actual=None, drift=None, needs_rebalance=False, note=None,
         message="尚無財富種植園策略檢核資料。",
     )
+    alloc_target = alloc_check.target
+    alloc_amounts = alloc_check.amounts or {"cash": 0.0, "qqq": 0.0, "tqqq": 0.0, "total": 0.0}
+    alloc_threshold = (settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)
     allocation_html = _render_allocation_block(alloc_check, settings)
     events_table_html = _render_events_table(events, ind.dates)
 
@@ -2313,12 +2358,159 @@ function initHoverEvents() {{
   }}
 }}
 
+// === 持倉金額即時調整與試算 (財富種植園策略) ===
+var allocConfig = {{
+  target: {{
+    cash: {alloc_target['cash']:.2f},
+    qqq: {alloc_target['qqq']:.2f},
+    tqqq: {alloc_target['tqqq']:.2f}
+  }},
+  defaultAmounts: {{
+    cash: {alloc_amounts.get('cash', 0):.2f},
+    qqq: {alloc_amounts.get('qqq', 0):.2f},
+    tqqq: {alloc_amounts.get('tqqq', 0):.2f}
+  }},
+  threshold: {alloc_threshold}
+}};
+
+function onAllocationAmountChange() {{
+  var cInput = document.getElementById('input-amt-cash');
+  var qInput = document.getElementById('input-amt-qqq');
+  var tInput = document.getElementById('input-amt-tqqq');
+  if (!cInput || !qInput || !tInput) return;
+
+  var c = parseFloat(cInput.value) || 0;
+  var q = parseFloat(qInput.value) || 0;
+  var t = parseFloat(tInput.value) || 0;
+  var tot = c + q + t;
+
+  var totLabel = document.getElementById('alloc-total-usd-label');
+  if (totLabel) {{
+    totLabel.textContent = '$' + tot.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+  }}
+
+  var cPct = tot > 0 ? (c / tot * 100) : 0;
+  var qPct = tot > 0 ? (q / tot * 100) : 0;
+  var tPct = tot > 0 ? (t / tot * 100) : 0;
+
+  var cFill = document.getElementById('actual-cash-bar-fill');
+  var qFill = document.getElementById('actual-qqq-bar-fill');
+  var tFill = document.getElementById('actual-tqqq-bar-fill');
+  var cLbl = document.getElementById('actual-cash-pct-label');
+  var qLbl = document.getElementById('actual-qqq-pct-label');
+  var tLbl = document.getElementById('actual-tqqq-pct-label');
+
+  if (cFill) cFill.style.width = Math.max(0, Math.min(100, cPct)).toFixed(1) + '%';
+  if (qFill) qFill.style.width = Math.max(0, Math.min(100, qPct)).toFixed(1) + '%';
+  if (tFill) tFill.style.width = Math.max(0, Math.min(100, tPct)).toFixed(1) + '%';
+  if (cLbl) cLbl.textContent = cPct.toFixed(1) + '%';
+  if (qLbl) qLbl.textContent = qPct.toFixed(1) + '%';
+  if (tLbl) tLbl.textContent = tPct.toFixed(1) + '%';
+
+  // 偏離度與再平衡檢查
+  var driftC = cPct - allocConfig.target.cash;
+  var driftQ = qPct - allocConfig.target.qqq;
+  var driftT = tPct - allocConfig.target.tqqq;
+  var th = allocConfig.threshold;
+
+  var needsRebalance = (Math.abs(driftC) > th || Math.abs(driftQ) > th || Math.abs(driftT) > th);
+  var banner = document.getElementById('alloc-rebalance-banner');
+  var bannerText = document.getElementById('alloc-rebalance-text');
+  var actCard = document.getElementById('alloc-actions-container');
+  var actList = document.getElementById('alloc-actions-list');
+
+  if (needsRebalance && tot > 0) {{
+    var parts = [];
+    if (Math.abs(driftQ) > th) parts.push('QQQ' + (driftQ > 0 ? '超重' : '低配') + Math.abs(driftQ).toFixed(1) + '%');
+    if (Math.abs(driftT) > th) parts.push('TQQQ' + (driftT > 0 ? '超重' : '低配') + Math.abs(driftT).toFixed(1) + '%');
+    if (Math.abs(driftC) > th) parts.push('現金' + (driftC > 0 ? '超重' : '低配') + Math.abs(driftC).toFixed(1) + '%');
+
+    if (banner) banner.style.display = 'block';
+    if (bannerText) {{
+      bannerText.textContent = '再平衡警示（門檻 ±' + th + '%）：' + parts.join('; ') + '。實際與目標權重偏離過大，建議調整部位。';
+    }}
+
+    // 計算建議買賣金額 (目標金額 - 目前金額)
+    var targetCUsd = tot * (allocConfig.target.cash / 100);
+    var targetQUsd = tot * (allocConfig.target.qqq / 100);
+    var targetTUsd = tot * (allocConfig.target.tqqq / 100);
+
+    var diffC = targetCUsd - c;
+    var diffQ = targetQUsd - q;
+    var diffT = targetTUsd - t;
+
+    var actHtml = '<ul style="margin:4px 0 0 18px;padding:0;">';
+    function fmtAct(sym, diff, pctDrift) {{
+      if (Math.abs(pctDrift) <= th) return '';
+      if (diff > 0) {{
+        return '<li>' + sym + ' 低配 ' + Math.abs(pctDrift).toFixed(1) + '%：建議 <b>加碼/買入 $' + Math.round(diff).toLocaleString('en-US') + '</b> (目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+      }} else {{
+        return '<li>' + sym + ' 超重 ' + Math.abs(pctDrift).toFixed(1) + '%：建議 <b>減碼/賣出 $' + Math.round(Math.abs(diff)).toLocaleString('en-US') + '</b> (目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+      }}
+    }}
+    if (Math.abs(driftQ) > th) {{
+      actHtml += '<li>QQQ ' + (driftQ > 0 ? '超重' : '低配') + ' ' + Math.abs(driftQ).toFixed(1) + '%：建議 <b style="color:' + (diffQ > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffQ > 0 ? '加碼買入' : '減碼賣出') + ' $' + Math.round(Math.abs(diffQ)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetQUsd).toLocaleString('en-US') + ')</li>';
+    }}
+    if (Math.abs(driftT) > th) {{
+      actHtml += '<li>TQQQ ' + (driftT > 0 ? '超重' : '低配') + ' ' + Math.abs(driftT).toFixed(1) + '%：建議 <b style="color:' + (diffT > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffT > 0 ? '加碼買入' : '減碼賣出') + ' $' + Math.round(Math.abs(diffT)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetTUsd).toLocaleString('en-US') + ')</li>';
+    }}
+    if (Math.abs(driftC) > th) {{
+      actHtml += '<li>現金 ' + (driftC > 0 ? '超重' : '低配') + ' ' + Math.abs(driftC).toFixed(1) + '%：建議 <b style="color:' + (diffC > 0 ? '#16a34a' : '#dc2626') + ';">' + (diffC > 0 ? '補足保留現金' : '挪用部分現金加碼標的') + ' $' + Math.round(Math.abs(diffC)).toLocaleString('en-US') + '</b> (拉至目標 $' + Math.round(targetCUsd).toLocaleString('en-US') + ')</li>';
+    }}
+    actHtml += '</ul>';
+
+    if (actCard) actCard.style.display = 'block';
+    if (actList) actList.innerHTML = actHtml;
+  }} else {{
+    if (banner) banner.style.display = 'none';
+    if (actCard) actCard.style.display = 'none';
+  }}
+}}
+
+function saveAllocationToLocal() {{
+  var c = document.getElementById('input-amt-cash').value;
+  var q = document.getElementById('input-amt-qqq').value;
+  var t = document.getElementById('input-amt-tqqq').value;
+  localStorage.setItem('lrs_alloc_amounts', JSON.stringify({{ cash: c, qqq: q, tqqq: t }}));
+  var tag = document.getElementById('alloc-actual-source-tag');
+  if (tag) tag.textContent = '已保存於此瀏覽器';
+  alert('持倉金額已保存於本機瀏覽器！下次開啟將自動帶入此組金額。');
+}}
+
+function resetAllocationDefault() {{
+  document.getElementById('input-amt-cash').value = allocConfig.defaultAmounts.cash;
+  document.getElementById('input-amt-qqq').value = allocConfig.defaultAmounts.qqq;
+  document.getElementById('input-amt-tqqq').value = allocConfig.defaultAmounts.tqqq;
+  localStorage.removeItem('lrs_alloc_amounts');
+  var tag = document.getElementById('alloc-actual-source-tag');
+  if (tag) tag.textContent = '系統快照預設值';
+  onAllocationAmountChange();
+}}
+
+function initSavedAllocation() {{
+  try {{
+    var saved = localStorage.getItem('lrs_alloc_amounts');
+    if (saved) {{
+      var parsed = JSON.parse(saved);
+      if (parsed && parsed.cash !== undefined) {{
+        document.getElementById('input-amt-cash').value = parsed.cash;
+        document.getElementById('input-amt-qqq').value = parsed.qqq;
+        document.getElementById('input-amt-tqqq').value = parsed.tqqq;
+        var tag = document.getElementById('alloc-actual-source-tag');
+        if (tag) tag.textContent = '載入自瀏覽器暫存';
+      }}
+    }}
+  }} catch(e) {{}}
+  onAllocationAmountChange();
+}}
+
 function bootChart() {{
   if (chartData) {{
     var initRange = chartData.default_range || '1y';
     setChartRange(initRange);
   }}
   initHoverEvents();
+  initSavedAllocation();
 }}
 
 if (document.readyState === 'loading') {{

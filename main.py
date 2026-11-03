@@ -54,7 +54,17 @@ def main() -> int:
     parser.add_argument("--mark-filled", action="store_true", help="標記已依建議進場建倉")
     parser.add_argument("--mark-closed", action="store_true", help="標記已依建議出場清倉")
     parser.add_argument("--price", type=float, default=None, help="配合 --mark-filled 記錄進場成本價")
+    parser.add_argument("--set-amounts", nargs=3, type=float, metavar=("CASH", "QQQ", "TQQQ"),
+                        help="輸入並更新持倉金額快照 (單位美金，如: --set-amounts 2314 22928 6065)")
+    parser.add_argument("--cash-amount", type=float, default=None, help="即時指定現金/SGOV金額 (美金，不寫入檔案)")
+    parser.add_argument("--qqq-amount", type=float, default=None, help="即時指定QQQ金額 (美金，不寫入檔案)")
+    parser.add_argument("--tqqq-amount", type=float, default=None, help="即時指定TQQQ金額 (美金，不寫入檔案)")
     args = parser.parse_args()
+
+    if args.set_amounts:
+        cash_val, qqq_val, tqqq_val = args.set_amounts
+        saved = allocation.save_snapshot_amounts(cash_val, qqq_val, tqqq_val)
+        print(f"持倉金額快照已更新: 現金 ${saved['cash']:,.2f} ({saved['cash_pct']}%), QQQ ${saved['qqq']:,.2f} ({saved['qqq_pct']}%), TQQQ ${saved['tqqq']:,.2f} ({saved['tqqq_pct']}%)，合計 ${saved['total']:,.2f}")
 
     if args.mark_filled or args.mark_closed:
         state = position_state.load()
@@ -99,7 +109,18 @@ def main() -> int:
     print(f"情緒評估: {vix_ctx.get('description', 'N/A')}")
     print(f"策略指引: {vix_ctx.get('guidance', 'N/A')}")
 
-    alloc = allocation.check_allocation(qqq_bars, settings)
+    custom_actual = None
+    custom_amounts = None
+    if args.cash_amount is not None and args.qqq_amount is not None and args.tqqq_amount is not None:
+        c, q, t = float(args.cash_amount), float(args.qqq_amount), float(args.tqqq_amount)
+        tot = c + q + t
+        if tot > 0:
+            custom_actual = {"cash": round(c / tot * 100, 2), "qqq": round(q / tot * 100, 2), "tqqq": round(t / tot * 100, 2)}
+            custom_amounts = {"cash": c, "qqq": q, "tqqq": t, "total": tot}
+
+    alloc = allocation.check_allocation(
+        qqq_bars, settings, custom_actual=custom_actual, custom_amounts=custom_amounts
+    )
     print("\n=== 現金/QQQ/TQQQ 三資產配置檢核（財富種植園策略） ===")
     print(alloc.message)
 

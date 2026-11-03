@@ -70,14 +70,24 @@ main.py                  CLI 入口
   - **座標模式與圖層切換**：支援線性座標 (Linear) 與對數座標 (Log Scale) 即時切換、均線與 VIX 曲線圖層自由開關。
   - **Price Pills**：右側即時均線與 VIX 動態定位標籤，具備自動防重疊演算法。
 
-## 現金 / QQQ / TQQQ 三資產配置（簡化版）
+## 現金 / QQQ / TQQQ 三資產配置（財富種植園策略移植）
 
 以現金與 QQQ 搭配 TQQQ 做組合配置，用以壓低單押 TQQQ 的波動與回撤
-（概念研究來源與簡化方式見 `docs/allocation-strategy.md`）。預設基礎目標權重
-**10% 現金 / 45% QQQ / 45% TQQQ**（`config/settings.json` → `allocation`），
-依既有訊號動作縮放 TQQQ 曝險（出場→100%現金、減碼/止盈→TQQQ目標按比例縮減），
-並在實際持倉（`state/allocation_snapshot.json`，使用者手動填寫）偏離目標超過
-`drift_threshold_pct`（預設 ±5%）時提醒再平衡。CLI 與 HTML 報告皆會顯示此檢核。
+（完整規則移植、兩大鐵律與參數說明見 `docs/allocation-strategy.md`）。預設基礎目標權重
+**10% 底倉現金 / 45% QQQ / 45% TQQQ**，機動倉 90% 依 QQQ 均線多空與回落幅度動態切換，
+並嚴格遵守「鐵律一（今日賣明日買）」與「鐵律二（防假反彈：防守滿2天且20MA向上方可轉進攻）」。
+
+### 持倉金額調整與再平衡檢核
+
+使用者可透過兩種方式輸入或調整實際持倉金額（美金 USD）：
+1. **網頁端即時互動面板**（`public/index.html`）：
+   - 在「三資產配置卡片」上方提供「現金 / QQQ / TQQQ」三個輸入框。
+   - 輸入任意金額，瀏覽器即時重新計算實際權重、偏離度，並即時給出各標的**加碼買入或減碼賣出之具體美金金額**。
+   - 支援「記住金額」（儲存於本機瀏覽器 LocalStorage）與「重設初始」。
+2. **CLI 命令列與設定檔**：
+   - 更新持久化快照：`python3 main.py --set-amounts 2314 22928 6065`（參數依序為 現金 QQQ TQQQ）。
+   - 即時指定單次檢核：`python3 main.py --cash-amount 2314 --qqq-amount 22928 --tqqq-amount 6065`。
+   - 或直接編輯 `state/allocation_snapshot.json`（支援金額 `{"cash": 2314, "qqq": 22928, "tqqq": 6065}` 或百分比）。
 
 ## 年度再平衡 (11/1) 與資產配置站整合 — 已知限制
 

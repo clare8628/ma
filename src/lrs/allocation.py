@@ -307,23 +307,90 @@ class AllocationCheck:
     needs_rebalance: bool
     note: Optional[str]
     message: str
+    amounts: Optional[Dict[str, float]] = None
 
 
-def _read_snapshot(path: str) -> Optional[Dict[str, float]]:
+def parse_snapshot_data(data: Any) -> "tuple[Optional[Dict[str, float]], Optional[Dict[str, float]]]":
+    """解析快照字典，支援金額（cash/sgov/qqq/tqqq）與百分比（cash_pct/qqq_pct/tqqq_pct）。
+
+    回傳: (weights_pct, amounts_dict)
+    """
+    if not isinstance(data, dict):
+        return None, None
+
+    # 1. 優先檢查金額格式：cash/sgov, qqq, tqqq
+    cash_amt = data.get("cash") if data.get("cash") is not None else data.get("sgov")
+    if cash_amt is None:
+        cash_amt = data.get("cash_amount") if data.get("cash_amount") is not None else data.get("cash_usd")
+    qqq_amt = data.get("qqq") if data.get("qqq") is not None else (data.get("qqq_amount") or data.get("qqq_usd"))
+    tqqq_amt = data.get("tqqq") if data.get("tqqq") is not None else (data.get("tqqq_amount") or data.get("tqqq_usd"))
+
+    if cash_amt is not None and qqq_amt is not None and tqqq_amt is not None:
+        try:
+            c = float(cash_amt)
+            q = float(qqq_amt)
+            t = float(tqqq_amt)
+            total = c + q + t
+            if total > 0:
+                weights = {
+                    "cash": round(c / total * 100, 2),
+                    "qqq": round(q / total * 100, 2),
+                    "tqqq": round(t / total * 100, 2),
+                }
+                amounts = {"cash": c, "qqq": q, "tqqq": t, "total": total}
+                return weights, amounts
+        except (ValueError, TypeError):
+            pass
+
+    # 2. 檢查百分比格式：cash_pct, qqq_pct, tqqq_pct
+    if all(data.get(k) is not None for k in ("cash_pct", "qqq_pct", "tqqq_pct")):
+        try:
+            return {
+                "cash": float(data["cash_pct"]),
+                "qqq": float(data["qqq_pct"]),
+                "tqqq": float(data["tqqq_pct"]),
+            }, None
+        except (ValueError, TypeError):
+            pass
+
+    return None, None
+
+
+def _read_snapshot(path: str) -> "tuple[Optional[Dict[str, float]], Optional[Dict[str, float]]]":
     if not os.path.exists(path):
-        return None
+        return None, None
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
-        return None
-    if any(data.get(k) is None for k in ("cash_pct", "qqq_pct", "tqqq_pct")):
-        return None
-    return {
-        "cash": float(data["cash_pct"]),
-        "qqq": float(data["qqq_pct"]),
-        "tqqq": float(data["tqqq_pct"]),
+        return None, None
+    return parse_snapshot_data(data)
+
+
+def save_snapshot_amounts(
+    cash: float,
+    qqq: float,
+    tqqq: float,
+    path: str = ALLOCATION_SNAPSHOT_PATH,
+) -> Dict[str, Any]:
+    """儲存使用者輸入的金額快照至 snapshot 檔案，並自動換算百分比。"""
+    total = cash + qqq + tqqq
+    if total <= 0:
+        raise ValueError("總資產金額必須大於 0")
+    data = {
+        "_comment": f"持倉金額快照（TQQQ {tqqq:.2f} / QQQ {qqq:.2f} / CASH {cash:.2f} USD，合計 {total:.2f} USD）",
+        "cash": round(cash, 2),
+        "qqq": round(qqq, 2),
+        "tqqq": round(tqqq, 2),
+        "total": round(total, 2),
+        "cash_pct": round(cash / total * 100, 2),
+        "qqq_pct": round(qqq / total * 100, 2),
+        "tqqq_pct": round(tqqq / total * 100, 2),
     }
+    os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
 
 
 def _fmt(weights: Dict[str, float]) -> str:
@@ -335,11 +402,18 @@ def check_allocation(
     settings: Optional[dict],
     snapshot_path: str = ALLOCATION_SNAPSHOT_PATH,
     state_path: str = WEALTH_FARM_STATE_PATH,
+    custom_actual: Optional[Dict[str, float]] = None,
+    custom_amounts: Optional[Dict[str, float]] = None,
 ) -> AllocationCheck:
     """執行財富種植園規則引擎並比對實際持倉快照，超過偏離門檻則提醒再平衡。"""
     result = run_wealth_farm(qqq_bars, settings, state_path=state_path)
     target = result["effective_weights"]
-    actual = _read_snapshot(snapshot_path)
+    
+    if custom_actual is not None:
+        actual = custom_actual
+        amounts = custom_amounts
+    else:
+        actual, amounts = _read_snapshot(snapshot_path)
     threshold = _cfg(settings).get("drift_threshold_pct", _DEFAULT_DRIFT_THRESHOLD_PCT)
 
     regime_line = f"[{result['date']}] {result['regime_label']}。"
@@ -349,15 +423,30 @@ def check_allocation(
     if actual is None:
         message = (
             f"{regime_line} 目標配置：{_fmt(target)}。尚無實際持倉快照，"
-            f"請於 {snapshot_path} 填入 cash_pct/qqq_pct/tqqq_pct 以啟用偏離度檢核。"
+            f"請於 {snapshot_path} 填入 cash/qqq/tqqq 金額或使用 --set-amounts 啟用偏離度檢核。"
         )
         return AllocationCheck(
             regime=result["regime"], regime_label=result["regime_label"], target=target,
             actual=None, drift=None, needs_rebalance=False, note=result["note"], message=message,
+            amounts=None,
         )
 
     drift = {k: actual[k] - target[k] for k in target}
     needs = any(abs(v) > threshold for v in drift.values())
+
+    amounts_line = ""
+    if amounts and amounts.get("total", 0) > 0:
+        total = amounts["total"]
+        rebal_actions = []
+        for asset in ("cash", "qqq", "tqqq"):
+            target_usd = total * (target[asset] / 100.0)
+            actual_usd = amounts[asset]
+            diff_usd = target_usd - actual_usd
+            if abs(drift[asset]) > threshold:
+                action_str = f"買入 ${diff_usd:.0f}" if diff_usd > 0 else f"賣出 ${abs(diff_usd):.0f}"
+                rebal_actions.append(f"{asset.upper()}{action_str}")
+        if rebal_actions:
+            amounts_line = f" 建議再平衡調整金額：{'; '.join(rebal_actions)}。"
 
     if needs:
         parts = [
@@ -367,7 +456,7 @@ def check_allocation(
         ]
         message = (
             f"{regime_line} 再平衡警示（門檻 ±{threshold}%）：{'; '.join(parts)}。"
-            f"目標 {_fmt(target)}，實際 {_fmt(actual)}，建議賣出超重資產、買入低配資產拉回目標權重。"
+            f"目標 {_fmt(target)}，實際 {_fmt(actual)}，建議賣出超重資產、買入低配資產拉回目標權重。{amounts_line}"
         )
     else:
         message = f"{regime_line} 配置正常：實際 {_fmt(actual)} 與目標 {_fmt(target)} 偏離在 ±{threshold}% 門檻內，無需再平衡。"
@@ -375,4 +464,5 @@ def check_allocation(
     return AllocationCheck(
         regime=result["regime"], regime_label=result["regime_label"], target=target,
         actual=actual, drift=drift, needs_rebalance=needs, note=result["note"], message=message,
+        amounts=amounts,
     )

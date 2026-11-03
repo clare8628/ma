@@ -241,6 +241,27 @@ class TestCheckAllocation(unittest.TestCase):
         )
         self.assertEqual(result2.target, {"cash": 10.0, "qqq": 0.0, "tqqq": 90.0})
 
+    def test_amount_snapshot_parsing_and_rebalance_calc(self):
+        bars = _bars([150.0] * 200 + [151.0] * 5)
+        # 模擬持倉金額輸入: SGOV 2314, QQQ 22928, TQQQ 6065 (合計 31307)
+        snap = self._write_snapshot({"sgov": 2314, "qqq": 22928, "tqqq": 6065})
+        result = allocation.check_allocation(bars, SETTINGS, snapshot_path=snap, state_path=self.state_path)
+        self.assertIsNotNone(result.actual)
+        self.assertAlmostEqual(result.actual["cash"], 7.39, places=1)
+        self.assertAlmostEqual(result.actual["qqq"], 73.24, places=1)
+        self.assertAlmostEqual(result.actual["tqqq"], 19.37, places=1)
+        self.assertIsNotNone(result.amounts)
+        self.assertEqual(result.amounts["total"], 31307.0)
+        self.assertTrue(result.needs_rebalance)
+        self.assertIn("建議再平衡調整金額", result.message)
+
+    def test_save_snapshot_amounts_utility(self):
+        path = os.path.join(self.tmpdir.name, "saved_alloc.json")
+        saved = allocation.save_snapshot_amounts(2314.0, 22928.0, 6065.0, path=path)
+        self.assertEqual(saved["total"], 31307.0)
+        self.assertAlmostEqual(saved["cash_pct"], 7.39, places=2)
+        self.assertTrue(os.path.exists(path))
+
 
 if __name__ == "__main__":
     unittest.main()
