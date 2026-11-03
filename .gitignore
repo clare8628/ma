@@ -3,6 +3,7 @@ state/report.html
 state/position.json
 state/asset_snapshot.json
 state/allocation_snapshot.json
+state/wealth_farm_state.json
 __pycache__/
 *.pyc
 .venv/

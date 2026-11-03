@@ -99,8 +99,8 @@ def main() -> int:
     print(f"情緒評估: {vix_ctx.get('description', 'N/A')}")
     print(f"策略指引: {vix_ctx.get('guidance', 'N/A')}")
 
-    alloc = allocation.check_allocation(rec.action, settings)
-    print("\n=== 現金/QQQ/TQQQ 三資產配置檢核 ===")
+    alloc = allocation.check_allocation(qqq_bars, settings)
+    print("\n=== 現金/QQQ/TQQQ 三資產配置檢核（財富種植園策略） ===")
     print(alloc.message)
 
     rb = rebalance.check_rebalance(settings)
@@ -108,7 +108,7 @@ def main() -> int:
     print(rb.message)
 
     if not args.no_chart:
-        render_html_report(args.output, ind, rec, settings=settings, rules=rules)
+        render_html_report(args.output, ind, rec, settings=settings, rules=rules, allocation_check=alloc)
         print(f"\n圖表報告已輸出: {args.output}")
 
     return 0

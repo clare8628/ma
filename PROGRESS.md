@@ -55,12 +55,17 @@
   - `chart.py`：主圖改以 QQQ 為主線，TQQQ 實際價格以虛線呈現於右側獨立次軸（線性/對數雙模式皆支援），新增專屬圖層開關、Price Pill、Crosshair 圓點與 Tooltip 欄位
   - Playwright 截圖驗證圖表渲染與滑鼠懸浮互動正常、無 console 錯誤；單元測試 45/45 通過
 
-- [x] [MAM-6] 搭配現金、QQQ平衡TQQQ融合進本專案 (v1.7.0)
-  - 新增 `src/lrs/allocation.py`：現金/QQQ/TQQQ三資產配置簡化版（基礎目標10%現金/45%QQQ/45%TQQQ，依訊號動作縮放TQQQ曝險，偏離目標超過±5%提醒再平衡）
-  - `config/settings.json` 新增 `allocation` 區塊；新增 `state/allocation_snapshot.json`（手動快照，已加入.gitignore）
-  - CLI (`main.py`) 新增「現金/QQQ/TQQQ三資產配置檢核」輸出段；HTML報告新增對應卡片（目標vs實際權重長條圖+再平衡提醒橫幅）
-  - 研究來源(YouTube影片，無公開逐字稿)與簡化說明詳見 `docs/allocation-strategy.md`
-  - 單元測試 57/57 通過（新增 test_allocation.py 10案例）
+- [x] [MAM-6] 搭配現金、QQQ平衡TQQQ融合進本專案（移植財富種植園逐字稿量化策略，v1.7.0）
+  - 新增 `src/lrs/allocation.py`：
+    - 依逐字稿實作 10% 底倉現金 + 90% 機動倉（QQQ/TQQQ/現金依訊號切換）
+    - 每日檢查 QQQ 200MA、高點回落幅度（牛市回落>10%全倉TQQQ、回落<=10%維持45/45；空頭回落>30%黃金坑全倉TQQQ；跌破200MA危險防守換全現金；半山腰拉扯區以20MA站上/跌破判定）
+    - 納入「高位巨量黑K出貨避險」邏輯（距高點<=5%且爆量2倍收黑K時，機動倉轉全QQQ）
+    - 嚴格落實「鐵律一（今日賣、明日買）」與「鐵律二（防假反彈：防守滿2天且20MA向上方可轉進攻）」狀態機，狀態累進持久化於 `state/wealth_farm_state.json`
+  - `config/settings.json` 新增 `allocation` 區塊（含各門檻參數 thresholds）
+  - 持倉快照：更新使用者持倉（TQQQ $6,065、QQQ $22,928、SGOV $2,314，折算 Cash 7.4% / QQQ 73.2% / TQQQ 19.4%），偏離目標超過 ±5% 自動警示再平衡
+  - CLI (`main.py`) 與 HTML 報告（`chart.py`）同步呈現財富種植園策略目標權重、當日狀態/註記與實際持倉對比
+  - 完整策略架構與參數說明更新於 `docs/allocation-strategy.md`
+  - 單元測試 61/61 通過（新增與更新 test_allocation.py 包含規則判定、鐵律狀態機與快照比對）
 
-測試覆蓋率：indicators / rules_engine / signals / rebalance / chart / backtest / allocation 七大模組皆有測試 (57/57 通過)。
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart / backtest / allocation 七大模組皆有測試 (61/61 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。

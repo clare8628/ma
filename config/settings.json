@@ -31,8 +31,19 @@
   "overheat_trim_fraction_max": 0.5,
   "defensive_reduce_fraction": 0.5,
   "allocation": {
-    "description": "現金+QQQ+TQQQ三資產配置（簡化版，用現金與QQQ平衡TQQQ波動/回撤）。target_weights為基礎目標權重，依訊號動作縮放TQQQ曝險；實際權重偏離超過drift_threshold_pct即提醒再平衡。見 docs/allocation-strategy.md",
+    "description": "現金+QQQ+TQQQ三資產配置（財富種植園策略移植，用10%底倉現金+90%機動倉QQQ/TQQQ切換平衡TQQQ波動/回撤）。target_weights為多頭常態機動倉基礎目標權重；thresholds為逐字稿規則參數（部分為本專案假設，見 docs/allocation-strategy.md）；實際權重偏離超過drift_threshold_pct即提醒再平衡。",
     "target_weights": {"cash": 10, "qqq": 45, "tqqq": 45},
+    "thresholds": {
+      "bull_dip_pct": 10,
+      "bear_defensive_pct": 10,
+      "golden_pit_pct": 30,
+      "near_ath_pct": 5,
+      "vol_spike_multiple": 2,
+      "vol_avg_window": 65,
+      "ma20_window": 20,
+      "ma20_slope_lookback": 3,
+      "defensive_min_days": 2
+    },
     "drift_threshold_pct": 5
   },
   "rebalance": {

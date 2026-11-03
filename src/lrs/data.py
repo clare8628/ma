@@ -36,6 +36,8 @@ def _get_ssl_context() -> Optional[ssl.SSLContext]:
 class PriceBar:
     date: str  # YYYY-MM-DD
     close: float
+    open: Optional[float] = None
+    volume: Optional[float] = None
 
 
 class DataFetchError(RuntimeError):
@@ -87,7 +89,7 @@ def fetch_history(
         and (range_ != "max" or len(cached_bars) >= 1500)
     )
     if cache_valid:
-        return [PriceBar(d, c) for d, c in cached_bars]
+        return [_bar_from_cache_row(row) for row in cached_bars]
 
     if range_ == "max":
         query = f"period1=0&period2=9999999999&interval={interval}"
@@ -102,43 +104,68 @@ def fetch_history(
             raw = json.loads(resp.read())
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         if cached:
-            return [PriceBar(d, c) for d, c in cached["bars"]]
+            return [_bar_from_cache_row(row) for row in cached["bars"]]
         raise DataFetchError(f"無法取得 {symbol} 資料且無可用快取: {exc}") from exc
 
     try:
         result = raw["chart"]["result"][0]
         timestamps = result["timestamp"]
-        closes = result["indicators"]["quote"][0]["close"]
+        quote = result["indicators"]["quote"][0]
+        closes = quote["close"]
+        opens = quote.get("open") or [None] * len(closes)
+        volumes = quote.get("volume") or [None] * len(closes)
     except (KeyError, IndexError, TypeError) as exc:
         if cached:
-            return [PriceBar(d, c) for d, c in cached["bars"]]
+            return [_bar_from_cache_row(row) for row in cached["bars"]]
         raise DataFetchError(f"{symbol} 回應格式不符預期: {exc}") from exc
 
     bars: List[PriceBar] = []
-    for ts, close in zip(timestamps, closes):
+    for ts, close, open_, volume in zip(timestamps, closes, opens, volumes):
         if close is None:
             continue
         date_str = time.strftime("%Y-%m-%d", time.gmtime(ts))
-        bars.append(PriceBar(date_str, float(close)))
+        bars.append(PriceBar(
+            date_str,
+            float(close),
+            open=float(open_) if open_ is not None else None,
+            volume=float(volume) if volume is not None else None,
+        ))
 
     if not bars:
         if cached:
-            return [PriceBar(d, c) for d, c in cached["bars"]]
+            return [_bar_from_cache_row(row) for row in cached["bars"]]
         raise DataFetchError(f"{symbol} 無有效資料")
 
     _save_cache(cache_dir, symbol, {
         "_fetched_at": now,
-        "bars": [[b.date, b.close] for b in bars],
+        "bars": [[b.date, b.close, b.open, b.volume] for b in bars],
     })
     return bars
 
 
+def _bar_from_cache_row(row: list) -> PriceBar:
+    """相容舊快取格式 [date, close]（無 open/volume）。"""
+    date_, close = row[0], row[1]
+    open_ = row[2] if len(row) > 2 else None
+    volume = row[3] if len(row) > 3 else None
+    return PriceBar(date_, close, open=open_, volume=volume)
+
+
 def load_history_csv(path: str) -> List[PriceBar]:
-    """從本地 CSV（欄位: date,close）載入資料，用於離線測試或自備資料。"""
+    """從本地 CSV（必要欄位: date,close；可選欄位: open,volume）載入資料，
+    用於離線測試或自備資料。缺少 open/volume 時該欄位為 None（部分策略判斷
+    如量化見頂訊號會自動略過）。"""
     bars: List[PriceBar] = []
     with open(path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            bars.append(PriceBar(row["date"], float(row["close"])))
+            open_ = row.get("open")
+            volume = row.get("volume")
+            bars.append(PriceBar(
+                row["date"],
+                float(row["close"]),
+                open=float(open_) if open_ not in (None, "") else None,
+                volume=float(volume) if volume not in (None, "") else None,
+            ))
     bars.sort(key=lambda b: b.date)
     return bars

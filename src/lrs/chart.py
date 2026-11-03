@@ -864,9 +864,8 @@ def _render_vix_analysis_block(ind: DailyIndicators, recommendation: Recommendat
     """
 
 
-def _render_allocation_block(recommendation: Recommendation, settings: Optional[dict]) -> str:
-    """繪製現金/QQQ/TQQQ三資產配置卡片（簡化版，見 docs/allocation-strategy.md）。"""
-    check = allocation.check_allocation(recommendation.action, settings)
+def _render_allocation_block(check: "allocation.AllocationCheck", settings: Optional[dict]) -> str:
+    """繪製現金/QQQ/TQQQ三資產配置卡片（財富種植園策略，見 docs/allocation-strategy.md）。"""
     target = check.target
     actual = check.actual
 
@@ -919,28 +918,39 @@ def _render_allocation_block(recommendation: Recommendation, settings: Optional[
         </div>
         """
 
+    note_html = ""
+    if check.note:
+        note_html = f"""
+        <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#1e3a8a;font-size:13px;">
+          🔒 <b>鐵律狀態</b>：{check.note}
+        </div>
+        """
+
     return f"""
     <div class="card" id="allocation-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-        <h3 style="margin:0;font-size:18px;color:#0f172a;">現金 / QQQ / TQQQ 三資產配置（簡化版）</h3>
+        <h3 style="margin:0;font-size:18px;color:#0f172a;">現金 / QQQ / TQQQ 三資產配置（財富種植園策略）</h3>
         <span style="font-size:12px;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:12px;border:1px solid #cbd5e1;">
-          用現金與QQQ平衡TQQQ波動 • 依訊號動作調整目標權重
+          {check.regime_label}
         </span>
       </div>
       {banner}
+      {note_html}
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:12px;">
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
-          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（依本日建議動作「{recommendation.action_label}」計算）</div>
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">目標配置權重（已套用鐵律一/二後之今日應持倉位）</div>
           {target_bars}
         </div>
         {actual_block}
       </div>
       <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:10px 14px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
-        💡 基礎目標權重預設 10% 現金 / 45% QQQ / 45% TQQQ（可於 config/settings.json 的
-        <code>allocation.target_weights</code> 調整）。全數出場訊號（死亡交叉/大盤空頭）目標轉為100%現金；
-        減碼/止盈訊號會按比例縮減TQQQ目標權重，差額併入現金。實際權重與目標偏離超過
-        ±{(settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)}% 時提醒再平衡。
-        概念簡化說明見 <code>docs/allocation-strategy.md</code>。
+        💡 10%底倉（現金，除非QQQ從高點崩跌逾30%否則不動用）+ 90%機動倉依QQQ的200日均線多空、
+        距歷史高點回落幅度、20日均線與其斜率，在QQQ/TQQQ/現金間切換（規則與參數見
+        <code>config/settings.json</code> 的 <code>allocation</code> 區塊）。鐵律一「今天賣明天買」：
+        加碼訊號延後一天執行；鐵律二「防假反彈」：由防守轉攻擊須防守滿
+        {(settings or {}).get("allocation", {}).get("thresholds", {}).get("defensive_min_days", 2)}天且20日均線斜率向上。
+        實際權重與目標偏離超過±{(settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)}%時提醒再平衡。
+        完整規則來源與假設說明見 <code>docs/allocation-strategy.md</code>。
       </div>
     </div>
     """
@@ -1020,6 +1030,7 @@ def render_html_report(
     rules: Optional[List[Rule]] = None,
     events_path: str = "config/events.json",
     window: Optional[int] = None,
+    allocation_check: Optional["allocation.AllocationCheck"] = None,
 ) -> None:
     # 預設展示視窗：若未指定 window，後端 SSR 預設近 1 年（252 交易日，若不足則全量），以避免一進來全時間長度過於擁擠
     # 前端 JavaScript 提供 1M/3M/6M/1Y/2Y/5Y/10Y/ALL 完整隨時無縫切換
@@ -1048,7 +1059,12 @@ def render_html_report(
     rules_block_html = _render_rules_block(rules, recommendation)
     metrics_panel_html = _render_metrics_panel(ind, recommendation)
     vix_analysis_html = _render_vix_analysis_block(ind, recommendation)
-    allocation_html = _render_allocation_block(recommendation, settings)
+    alloc_check = allocation_check or allocation.AllocationCheck(
+        regime=None, regime_label="尚無資料", target=allocation._target_weights(settings),
+        actual=None, drift=None, needs_rebalance=False, note=None,
+        message="尚無財富種植園策略檢核資料。",
+    )
+    allocation_html = _render_allocation_block(alloc_check, settings)
     events_table_html = _render_events_table(events, ind.dates)
 
     rules_html = "".join(
