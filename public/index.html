@@ -1222,9 +1222,9 @@ var allocConfig = {
     tqqq: 45.00
   },
   defaultAmounts: {
-    cash: 2314.00,
-    qqq: 22928.00,
-    tqqq: 6065.00
+    cash: 0.00,
+    qqq: 0.00,
+    tqqq: 0.00
   },
   threshold: 5
 };
@@ -1384,7 +1384,7 @@ if (document.readyState === 'loading') {
     </div>
     <div class="version-badge-group">
       <span class="badge-version">平台版本：v1.7.0</span>
-      <span class="badge-timestamp">產出時間戳記：2026-11-03 22:24:30</span>
+      <span class="badge-timestamp">產出時間戳記：2026-11-04 09:36:30</span>
       <span class="badge-inception">全歷史時間軸：2010-02-11 至 2026-11-02（自 TQQQ 成立開始）</span>
     </div>
   </div>
@@ -1576,8 +1576,8 @@ if (document.readyState === 'loading') {
         </span>
       </div>
 
-      <div id="alloc-rebalance-banner" style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;display:block;">
-        ⚖️ <b>再平衡提醒</b>：<span id="alloc-rebalance-text">[2026-11-02] 多頭回落>10%：機動倉全倉TQQQ（攻擊模式）。 再平衡警示（門檻 ±5%）：QQQ超重73.2%; TQQQ低配25.6%; CASH低配47.6%。目標 現金55.0%/QQQ0.0%/TQQQ45.0%，實際 現金7.4%/QQQ73.2%/TQQQ19.4%，建議賣出超重資產、買入低配資產拉回目標權重。 建議再平衡調整金額：CASH買入 $14905; QQQ賣出 $22928; TQQQ買入 $8023。</span>
+      <div id="alloc-rebalance-banner" style="background:#fff7ed;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#9a3412;font-size:13px;display:none;">
+        ⚖️ <b>再平衡提醒</b>：<span id="alloc-rebalance-text"></span>
       </div>
 
       
@@ -1590,26 +1590,26 @@ if (document.readyState === 'loading') {
             <span style="font-weight:400;font-size:12px;color:#64748b;">修改後即時連動計算權重與再平衡差額</span>
           </div>
           <div style="font-size:12px;color:#0f172a;font-weight:700;">
-            資產總額：<span id="alloc-total-usd-label" style="color:#0284c7;font-size:14px;">$31,307.00</span>
+            資產總額：<span id="alloc-total-usd-label" style="color:#0284c7;font-size:14px;">$0.00</span>
           </div>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;align-items:center;">
           <div>
             <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">現金 / SGOV (USD)</label>
-            <input type="number" id="input-amt-cash" value="2314.00" step="10" min="0"
+            <input type="number" id="input-amt-cash" value="0.00" step="10" min="0"
               style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#334155;"
               oninput="onAllocationAmountChange()">
           </div>
           <div>
             <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">QQQ 市值 (USD)</label>
-            <input type="number" id="input-amt-qqq" value="22928.00" step="10" min="0"
+            <input type="number" id="input-amt-qqq" value="0.00" step="10" min="0"
               style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#1d4ed8;"
               oninput="onAllocationAmountChange()">
           </div>
           <div>
             <label style="display:block;font-size:11.5px;color:#475569;margin-bottom:4px;font-weight:600;">TQQQ 市值 (USD)</label>
-            <input type="number" id="input-amt-tqqq" value="6065.00" step="10" min="0"
+            <input type="number" id="input-amt-tqqq" value="0.00" step="10" min="0"
               style="width:100%;padding:6px 10px;border:1px solid #94a3b8;border-radius:6px;font-size:13px;box-sizing:border-box;font-weight:600;color:#b91c1c;"
               oninput="onAllocationAmountChange()">
           </div>
@@ -1666,28 +1666,28 @@ if (document.readyState === 'loading') {
           
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>現金 (SGOV/活存)</span><span id="actual-cash-pct-label" style="font-weight:700;">7.4%</span>
+            <span>現金 (SGOV/活存)</span><span id="actual-cash-pct-label" style="font-weight:700;">0.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div id="actual-cash-bar-fill" style="background:#64748b;height:100%;width:7.4%;transition:width 0.25s ease;"></div>
+            <div id="actual-cash-bar-fill" style="background:#64748b;height:100%;width:0.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>QQQ</span><span id="actual-qqq-pct-label" style="font-weight:700;">73.2%</span>
+            <span>QQQ</span><span id="actual-qqq-pct-label" style="font-weight:700;">0.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div id="actual-qqq-bar-fill" style="background:#2563eb;height:100%;width:73.2%;transition:width 0.25s ease;"></div>
+            <div id="actual-qqq-bar-fill" style="background:#2563eb;height:100%;width:0.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#334155;margin-bottom:2px;">
-            <span>TQQQ</span><span id="actual-tqqq-pct-label" style="font-weight:700;">19.4%</span>
+            <span>TQQQ</span><span id="actual-tqqq-pct-label" style="font-weight:700;">0.0%</span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;">
-            <div id="actual-tqqq-bar-fill" style="background:#dc2626;height:100%;width:19.4%;transition:width 0.25s ease;"></div>
+            <div id="actual-tqqq-bar-fill" style="background:#dc2626;height:100%;width:0.0%;transition:width 0.25s ease;"></div>
           </div>
         </div>
         
@@ -2113,7 +2113,7 @@ if (document.readyState === 'loading') {
     
 
   <footer>
-    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.7.0 • 報表時間戳記：2026-11-03 22:24:30 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
+    TQQQ 槓桿輪換策略 (LRS) 平台 • 版本：v1.7.0 • 報表時間戳記：2026-11-04 09:36:30 • 時間軸追溯自 2010 年成立首日 • 零外部套件相依純標準庫架構
   </footer>
 
   <!-- 滑鼠懸浮浮動資訊卡 (Tooltip，呈現當日價格、VIX指數等精確數值) -->
