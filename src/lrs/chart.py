@@ -865,35 +865,15 @@ def _render_vix_analysis_block(ind: DailyIndicators, recommendation: Recommendat
 
 
 def _render_cape_block() -> str:
-    """繪製 S&P 500 席勒本益比 (CAPE) 與超額本益比報酬率 (ECY) 宏觀估值卡片。"""
+    """繪製 S&P 500 席勒本益比 (CAPE) 與超額本益比報酬率 (ECY) 宏觀估值卡片（純向量動態圖表版）。"""
     cape_stats = cape.get_cape_statistics()
     latest = cape_stats.get("latest", {})
     history = cape_stats.get("history", [])
     source_url = cape_stats.get("source_url", "https://www.wantgoo.com/global/macroeconomics/cape")
-    last_updated = cape_stats.get("last_updated", "最新")
 
     cape_val = latest.get("cape", 40.71)
     ecy_val = latest.get("ecy", 0.56)
     eval_info = cape.evaluate_cape_valuation(cape_val)
-
-    # 讀取 public/shiller-cape.jpg 並轉為 base64 內嵌，確保全平台完全自包含
-    img_tag = ""
-    img_path = "public/shiller-cape.jpg"
-    if os.path.exists(img_path):
-        import base64
-        with open(img_path, "rb") as f:
-            b64_str = base64.b64encode(f.read()).decode("utf-8")
-        img_tag = f"""
-        <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#ffffff;">
-          <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:600;color:#475569;display:flex;justify-content:space-between;align-items:center;">
-            <span>📈 S&P 500 席勒本益比歷史走勢圖 (1880~2026 全歷史走勢，含CAPE/ECY/標普500)</span>
-            <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none;">前往玩股網原始圖表 ↗</a>
-          </div>
-          <div style="padding:10px;text-align:center;">
-            <img src="data:image/jpeg;base64,{b64_str}" alt="S&P 500 席勒本益比走勢圖" style="max-width:100%;height:auto;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.05);" />
-          </div>
-        </div>
-        """
 
     # 歷史月份表格 rows
     table_rows = []
@@ -970,11 +950,54 @@ def _render_cape_block() -> str:
         </div>
       </div>
 
-      <!-- 走勢圖內嵌 -->
-      {img_tag}
+      <!-- 動態互動走勢圖容器 -->
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <!-- 區間切換按鈕 -->
+          <div class="range-selector" id="cape-range-selector">
+            <span style="font-size:12px;color:#64748b;font-weight:600;margin-right:4px;">觀察區間：</span>
+            <button type="button" class="range-btn" onclick="setCapeRange('1y')">1Y</button>
+            <button type="button" class="range-btn" onclick="setCapeRange('3y')">3Y</button>
+            <button type="button" class="range-btn" onclick="setCapeRange('5y')">5Y</button>
+            <button type="button" class="range-btn" onclick="setCapeRange('10y')">10Y</button>
+            <button type="button" class="range-btn" onclick="setCapeRange('20y')">20Y</button>
+            <button type="button" class="range-btn active" onclick="setCapeRange('all')">All</button>
+          </div>
+
+          <!-- 圖例與開關 -->
+          <div style="display:flex;gap:12px;align-items:center;font-size:12px;flex-wrap:wrap;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#2563eb;font-weight:600;">
+              <input type="checkbox" id="toggle-cape-line" checked onchange="toggleCapeSeries('cape', this.checked)">
+              <span style="display:inline-block;width:12px;height:3px;background:#2563eb;border-radius:2px;"></span> CAPE 席勒本益比
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#dc2626;font-weight:600;">
+              <input type="checkbox" id="toggle-ecy-line" checked onchange="toggleCapeSeries('ecy', this.checked)">
+              <span style="display:inline-block;width:12px;height:3px;background:#dc2626;border-radius:2px;"></span> ECY 超額報酬率
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#eab308;font-weight:600;">
+              <input type="checkbox" id="toggle-sp500-line" checked onchange="toggleCapeSeries('sp500', this.checked)">
+              <span style="display:inline-block;width:12px;height:3px;background:#eab308;border-radius:2px;"></span> S&P 500 指數
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#64748b;">
+              <input type="checkbox" id="toggle-recession-bands" checked onchange="toggleCapeSeries('recession', this.checked)">
+              <span style="display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;"></span> 歷史經濟衰退陰影
+            </label>
+          </div>
+        </div>
+
+        <!-- 即時數值指示狀態列 -->
+        <div id="cape-hover-bar" style="font-size:12px;color:#475569;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;margin-bottom:8px;min-height:18px;">
+          <span style="color:#64748b;">💡 游標滑移至圖上可即時檢視歷史任一月份的 CAPE、ECY 與標普指數精確數值</span>
+        </div>
+
+        <!-- SVG 畫布容器 -->
+        <div id="cape-svg-container" style="position:relative;width:100%;overflow-x:auto;">
+          <!-- SVG 由前端 JavaScript 動態精確計算與向量渲染 -->
+        </div>
+      </div>
 
       <!-- 指標與學理說明 -->
-      <div style="margin-top:14px;font-size:12.5px;color:#475569;background:#f8fafc;padding:12px 16px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
+      <div style="font-size:12.5px;color:#475569;background:#f8fafc;padding:12px 16px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
         <div><b>📘 指標說明</b>：席勒本益比（Shiller PE, PE10）= 股價 / 近10年平均實質EPS，經通膨與季節性調整，由 2013 年諾貝爾經濟學獎得主 Robert Shiller 教授提出，一般用於預估大盤實質中長期回報潛力，較不適用於短線擇時。</div>
         <div style="margin-top:4px;"><b>📘 ECY 說明</b>：超額調整後本益比報酬率 ECY = (1/CAPE) - 美國實質10年債利率，同樣由席勒教授提出，進一步考量利率環境對股票估值的影響。ECY 代表股票相對於公債的實質超額報酬，ECY 越低表示股市相對高估。</div>
       </div>
@@ -1229,6 +1252,7 @@ def render_html_report(
     alloc_threshold = (settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)
     allocation_html = _render_allocation_block(alloc_check, settings)
     cape_block_html = _render_cape_block()
+    cape_full_history = cape.get_full_cape_history()
     events_table_html = _render_events_table(events, ind.dates)
 
     rules_html = "".join(
@@ -1260,6 +1284,8 @@ def render_html_report(
         "default_range": "1y" if total_dates_count >= 252 else "all",
     }
     chart_json = json.dumps(chart_payload, ensure_ascii=False)
+    cape_history_json = json.dumps(cape_full_history, ensure_ascii=False)
+    nber_recessions_json = json.dumps(cape.NBER_RECESSIONS, ensure_ascii=False)
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
@@ -2623,6 +2649,261 @@ function initSavedAllocation() {{
   onAllocationAmountChange();
 }}
 
+// === S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY) 動態向量圖表 ===
+var capeHistoryData = {cape_history_json};
+var nberRecessions = {nber_recessions_json};
+var currentCapeRange = 'all';
+var capeSeriesVisible = {{
+  cape: true,
+  ecy: true,
+  sp500: true,
+  recession: true
+}};
+
+function setCapeRange(range) {{
+  currentCapeRange = range;
+  var sel = document.getElementById('cape-range-selector');
+  if (sel) {{
+    var btns = sel.querySelectorAll('.range-btn');
+    btns.forEach(function(b) {{
+      if (b.textContent.trim().toLowerCase() === range.toLowerCase()) {{
+        b.classList.add('active');
+      }} else {{
+        b.classList.remove('active');
+      }}
+    }});
+  }}
+  renderCapeDynamicChart();
+}}
+
+function toggleCapeSeries(seriesName, isVisible) {{
+  capeSeriesVisible[seriesName] = isVisible;
+  renderCapeDynamicChart();
+}}
+
+function renderCapeDynamicChart() {{
+  var container = document.getElementById('cape-svg-container');
+  if (!container || !capeHistoryData || capeHistoryData.length === 0) return;
+
+  var totalLen = capeHistoryData.length;
+  var filtered = capeHistoryData;
+
+  // 計算區間過濾點數 (以月份為單位，1年=12個月)
+  var countMap = {{ '1y': 12, '3y': 36, '5y': 60, '10y': 120, '20y': 240 }};
+  if (countMap[currentCapeRange]) {{
+    var cnt = countMap[currentCapeRange];
+    filtered = capeHistoryData.slice(Math.max(0, totalLen - cnt));
+  }}
+
+  if (filtered.length === 0) return;
+
+  var width = Math.max(900, container.clientWidth || 1320);
+  var height = 420;
+  var padLeft = 56;
+  var padRight = 64;
+  var padTop = 32;
+  var padBottom = 48;
+  var plotW = width - padLeft - padRight;
+  var plotH = height - padTop - padBottom;
+
+  // 1. 計算左軸範圍 (CAPE 與 ECY，刻度如 -12 ~ 48)
+  var leftMin = -12.0;
+  var leftMax = 48.0;
+  if (currentCapeRange === '1y' || currentCapeRange === '3y' || currentCapeRange === '5y') {{
+    var minVal = Infinity, maxVal = -Infinity;
+    filtered.forEach(function(d) {{
+      if (capeSeriesVisible.cape) {{ minVal = Math.min(minVal, d.cape); maxVal = Math.max(maxVal, d.cape); }}
+      if (capeSeriesVisible.ecy) {{ minVal = Math.min(minVal, d.ecy); maxVal = Math.max(maxVal, d.ecy); }}
+    }});
+    if (minVal !== Infinity) {{
+      leftMin = Math.floor(Math.min(-5, minVal - 3));
+      leftMax = Math.ceil(Math.max(25, maxVal + 5));
+    }}
+  }}
+
+  // 2. 計算右軸範圍 (S&P 500 指數)
+  var rightMin = 0;
+  var rightMax = 8000;
+  var spVals = filtered.map(function(d) {{ return d.sp500; }}).filter(function(v) {{ return v !== null && v !== undefined; }});
+  if (spVals.length > 0) {{
+    var spMax = Math.max.apply(null, spVals);
+    rightMax = Math.ceil(spMax * 1.1 / 1000) * 1000;
+  }}
+
+  function getX(idx) {{
+    return padLeft + (idx / (filtered.length - 1 || 1)) * plotW;
+  }}
+  function getYLeft(val) {{
+    return padTop + plotH - ((val - leftMin) / (leftMax - leftMin || 1)) * plotH;
+  }}
+  function getYRight(val) {{
+    return padTop + plotH - ((val - rightMin) / (rightMax - rightMin || 1)) * plotH;
+  }}
+
+  // 3. 繪製衰退期背景陰影條 (NBER Recessions)
+  var recessionsSvg = '';
+  if (capeSeriesVisible.recession) {{
+    var startDateStr = filtered[0].date;
+    var endDateStr = filtered[filtered.length - 1].date;
+    nberRecessions.forEach(function(rec) {{
+      var rStart = rec[0], rEnd = rec[1];
+      if (rEnd < startDateStr || rStart > endDateStr) return;
+      var effStart = rStart < startDateStr ? startDateStr : rStart;
+      var effEnd = rEnd > endDateStr ? endDateStr : rEnd;
+
+      var sIdx = filtered.findIndex(function(d) {{ return d.date >= effStart; }});
+      var eIdx = filtered.findIndex(function(d) {{ return d.date >= effEnd; }});
+      if (sIdx === -1) sIdx = 0;
+      if (eIdx === -1) eIdx = filtered.length - 1;
+
+      var x1 = getX(sIdx);
+      var x2 = getX(eIdx);
+      var w = Math.max(2, x2 - x1);
+      recessionsSvg += '<rect x="' + x1.toFixed(1) + '" y="' + padTop + '" width="' + w.toFixed(1) + '" height="' + plotH + '" fill="#f1f5f9" opacity="0.85" />';
+    }});
+  }}
+
+  // 4. 繪製左軸與橫軸格線 (Y 軸 0 基準線、橫軸刻度)
+  var gridSvg = '';
+  var yTicks = 6;
+  for (var i = 0; i <= yTicks; i++) {{
+    var yVal = leftMin + (i / yTicks) * (leftMax - leftMin);
+    var yPos = getYLeft(yVal);
+    var isZero = Math.abs(yVal) < 0.1;
+    var strokeColor = isZero ? '#94a3b8' : '#f1f5f9';
+    var strokeWidth = isZero ? '1.5' : '1';
+    var strokeDash = isZero ? '' : 'stroke-dasharray="3,3"';
+
+    gridSvg += '<line x1="' + padLeft + '" y1="' + yPos.toFixed(1) + '" x2="' + (padLeft + plotW) + '" y2="' + yPos.toFixed(1) + '" stroke="' + strokeColor + '" stroke-width="' + strokeWidth + '" ' + strokeDash + ' />';
+    // 左側刻度文字 (CAPE / ECY)
+    gridSvg += '<text x="' + (padLeft - 10) + '" y="' + (yPos + 4).toFixed(1) + '" font-size="11" fill="#64748b" text-anchor="end">' + Math.round(yVal) + '</text>';
+
+    // 右側刻度文字 (S&P 500)
+    var rVal = rightMin + (i / yTicks) * (rightMax - rightMin);
+    var rLabel = rVal >= 1000 ? (rVal / 1000).toFixed(0) + 'k' : Math.round(rVal);
+    gridSvg += '<text x="' + (padLeft + plotW + 10) + '" y="' + (yPos + 4).toFixed(1) + '" font-size="11" fill="#eab308" text-anchor="start">' + rLabel + '</text>';
+  }}
+
+  // 橫軸年份刻度
+  var xTicksSvg = '';
+  var xStep = Math.max(1, Math.floor(filtered.length / 10));
+  for (var j = 0; j < filtered.length; j += xStep) {{
+    var xPos = getX(j);
+    var dtStr = filtered[j].date;
+    var yrLabel = dtStr.substring(0, 4);
+    xTicksSvg += '<line x1="' + xPos.toFixed(1) + '" y1="' + (padTop + plotH) + '" x2="' + xPos.toFixed(1) + '" y2="' + (padTop + plotH + 5) + '" stroke="#cbd5e1" />';
+    xTicksSvg += '<text x="' + xPos.toFixed(1) + '" y="' + (padTop + plotH + 18) + '" font-size="11" fill="#64748b" text-anchor="middle">' + yrLabel + '</text>';
+  }}
+
+  // 5. 繪製折線 (CAPE: #2563eb, ECY: #dc2626, S&P 500: #eab308)
+  function buildPathD(arr, isRightAxis) {{
+    var dStr = '';
+    arr.forEach(function(pt, idx) {{
+      var x = getX(idx);
+      var y = isRightAxis ? getYRight(pt) : getYLeft(pt);
+      dStr += (idx === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    }});
+    return dStr;
+  }}
+
+  var capePath = capeSeriesVisible.cape ? '<path d="' + buildPathD(filtered.map(function(d) {{ return d.cape; }}), false) + '" fill="none" stroke="#2563eb" stroke-width="2.2" />' : '';
+  var ecyPath = capeSeriesVisible.ecy ? '<path d="' + buildPathD(filtered.map(function(d) {{ return d.ecy; }}), false) + '" fill="none" stroke="#dc2626" stroke-width="2.0" />' : '';
+  var sp500Path = capeSeriesVisible.sp500 ? '<path d="' + buildPathD(filtered.map(function(d) {{ return d.sp500; }}), true) + '" fill="none" stroke="#eab308" stroke-width="1.8" />' : '';
+
+  // 浮水印商標 (對齊玩股網風格 WantGoo 玩股網)
+  var watermark = '<text x="' + (padLeft + plotW / 2) + '" y="' + (padTop + 40) + '" font-size="15" fill="#cbd5e1" font-weight="600" text-anchor="middle" letter-spacing="1">WantGoo 玩股網 宏觀數據核心統計</text>';
+
+  // 組合 SVG
+  var svgHtml = '<svg id="cape-dynamic-svg" viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="' + height + '" style="display:block;cursor:crosshair;">' +
+    recessionsSvg +
+    watermark +
+    gridSvg +
+    xTicksSvg +
+    capePath +
+    ecyPath +
+    sp500Path +
+    '<line id="cape-crosshair-line" x1="0" y1="' + padTop + '" x2="0" y2="' + (padTop + plotH) + '" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" style="display:none;" />' +
+    '<circle id="cape-dot-cape" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="2" style="display:none;" />' +
+    '<circle id="cape-dot-ecy" r="4.5" fill="#dc2626" stroke="#fff" stroke-width="2" style="display:none;" />' +
+    '<circle id="cape-dot-sp500" r="4.5" fill="#eab308" stroke="#fff" stroke-width="2" style="display:none;" />' +
+    '</svg>';
+
+  container.innerHTML = svgHtml;
+
+  // 6. 綁定滑鼠懸浮 Crosshair 與動態指示列
+  var svgEl = document.getElementById('cape-dynamic-svg');
+  if (svgEl) {{
+    svgEl.addEventListener('mousemove', function(e) {{
+      var rect = svgEl.getBoundingClientRect();
+      var mouseX = (e.clientX - rect.left) * (width / rect.width);
+      if (mouseX < padLeft || mouseX > padLeft + plotW) {{
+        hideCapeCrosshair();
+        return;
+      }}
+      var ratio = (mouseX - padLeft) / plotW;
+      var idx = Math.round(ratio * (filtered.length - 1));
+      idx = Math.max(0, Math.min(filtered.length - 1, idx));
+      var pt = filtered[idx];
+
+      var xPos = getX(idx);
+      var cLine = document.getElementById('cape-crosshair-line');
+      if (cLine) {{
+        cLine.setAttribute('x1', xPos);
+        cLine.setAttribute('x2', xPos);
+        cLine.style.display = 'block';
+      }}
+
+      var dotC = document.getElementById('cape-dot-cape');
+      var dotE = document.getElementById('cape-dot-ecy');
+      var dotS = document.getElementById('cape-dot-sp500');
+
+      if (dotC && capeSeriesVisible.cape) {{
+        dotC.setAttribute('cx', xPos);
+        dotC.setAttribute('cy', getYLeft(pt.cape));
+        dotC.style.display = 'block';
+      }}
+      if (dotE && capeSeriesVisible.ecy) {{
+        dotE.setAttribute('cx', xPos);
+        dotE.setAttribute('cy', getYLeft(pt.ecy));
+        dotE.style.display = 'block';
+      }}
+      if (dotS && capeSeriesVisible.sp500) {{
+        dotS.setAttribute('cx', xPos);
+        dotS.setAttribute('cy', getYRight(pt.sp500));
+        dotS.style.display = 'block';
+      }}
+
+      // 更新 Hover 狀態列文字
+      var hBar = document.getElementById('cape-hover-bar');
+      if (hBar) {{
+        hBar.innerHTML = '<span style="color:#0f172a;font-weight:700;">' + pt.date + '：</span>' +
+          '<span><b style="color:#2563eb;">● CAPE 席勒本益比</b>: <b>' + pt.cape.toFixed(2) + '</b></span> • ' +
+          '<span><b style="color:#dc2626;">● ECY 超額報酬率</b>: <b>' + pt.ecy.toFixed(2) + '%</b></span> • ' +
+          '<span><b style="color:#eab308;">● S&P 500 指數</b>: <b>' + pt.sp500.toLocaleString('en-US', {{ minimumFractionDigits: 1 }}) + '</b></span>';
+      }}
+    }});
+
+    svgEl.addEventListener('mouseleave', function() {{
+      hideCapeCrosshair();
+    }});
+  }}
+}}
+
+function hideCapeCrosshair() {{
+  var cLine = document.getElementById('cape-crosshair-line');
+  var dotC = document.getElementById('cape-dot-cape');
+  var dotE = document.getElementById('cape-dot-ecy');
+  var dotS = document.getElementById('cape-dot-sp500');
+  if (cLine) cLine.style.display = 'none';
+  if (dotC) dotC.style.display = 'none';
+  if (dotE) dotE.style.display = 'none';
+  if (dotS) dotS.style.display = 'none';
+  var hBar = document.getElementById('cape-hover-bar');
+  if (hBar) {{
+    hBar.innerHTML = '<span style="color:#64748b;">💡 游標滑移至圖上可即時檢視歷史任一月份的 CAPE、ECY 與標普指數精確數值</span>';
+  }}
+}}
+
 function bootChart() {{
   if (chartData) {{
     var initRange = chartData.default_range || '1y';
@@ -2630,7 +2911,12 @@ function bootChart() {{
   }}
   initHoverEvents();
   initSavedAllocation();
+  renderCapeDynamicChart();
 }}
+
+window.addEventListener('resize', function() {{
+  renderCapeDynamicChart();
+}});
 
 if (document.readyState === 'loading') {{
   document.addEventListener('DOMContentLoaded', bootChart);

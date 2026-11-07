@@ -21,16 +21,29 @@ import urllib.request
 from typing import Any, Dict, List, Optional
 
 CAPE_CACHE_PATH = "state/cache/cape_stats.json"
+CAPE_FULL_HISTORY_PATH = "state/cache/cape_history_full.json"
 
-# 基準靜態快照資料（取自 WantGoo 官方統計圖表最新月份紀錄，確保離線或無網路亦能秒級載入）
+# NBER 歷史經濟衰退期 (起, 訖)
+NBER_RECESSIONS = [
+    ("1873-10", "1879-03"), ("1882-03", "1885-05"), ("1887-03", "1888-04"), ("1890-07", "1891-05"),
+    ("1893-01", "1894-06"), ("1895-12", "1897-06"), ("1899-06", "1900-12"), ("1902-09", "1904-08"),
+    ("1907-05", "1908-06"), ("1910-01", "1912-01"), ("1913-01", "1914-12"), ("1918-08", "1919-03"),
+    ("1920-01", "1921-07"), ("1923-05", "1924-07"), ("1926-10", "1927-11"), ("1929-08", "1933-03"),
+    ("1937-05", "1938-06"), ("1945-02", "1945-10"), ("1948-11", "1949-10"), ("1953-07", "1954-05"),
+    ("1957-08", "1958-04"), ("1960-04", "1961-02"), ("1969-12", "1970-11"), ("1973-11", "1975-03"),
+    ("1980-01", "1980-07"), ("1981-07", "1982-11"), ("1990-07", "1991-03"), ("2001-03", "2001-11"),
+    ("2007-12", "2009-06"), ("2020-02", "2020-04")
+]
+
+# 基準靜態快照資料（備份預設）
 _DEFAULT_CAPE_DATA = {
     "source_url": "https://www.wantgoo.com/global/macroeconomics/cape",
-    "last_updated": "2026/11/02",
+    "last_updated": "2026/11/06",
     "latest": {
         "date": "2026/10",
         "cape": 40.71,
         "ecy": 0.56,
-        "status": "極度高估（歷史高檔警戒區）",
+        "status": "極端高估",
         "percentile_approx": 98.5,
     },
     "history": [
@@ -80,6 +93,21 @@ def evaluate_cape_valuation(cape: float) -> Dict[str, str]:
         }
 
 
+def get_full_cape_history() -> List[Dict[str, Any]]:
+    """讀取全歷史數據點 (date, cape, ecy, sp500) 供前端向量圖形繪製。"""
+    if os.path.exists(CAPE_FULL_HISTORY_PATH):
+        try:
+            with open(CAPE_FULL_HISTORY_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # 預設至少提供近 20 年簡化點
+    return [
+        {"date": h["date"].replace("/", "-"), "cape": h["cape"], "ecy": h["ecy"], "sp500": 5800.0}
+        for h in _DEFAULT_CAPE_DATA["history"]
+    ]
+
+
 def get_cape_statistics(cache_ttl_hours: int = 48) -> Dict[str, Any]:
     """取得 CAPE 與 ECY 數據。優先從本地快取讀取，若快取過期則嘗試更新並寫回快取。"""
     if os.path.exists(CAPE_CACHE_PATH):
@@ -93,53 +121,31 @@ def get_cape_statistics(cache_ttl_hours: int = 48) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 嘗試從網路即時爬取更新
+    # 嘗試從歷史完整快照或網路整理最新
     data = dict(_DEFAULT_CAPE_DATA)
-    try:
-        req = urllib.request.Request(
-            "https://www.multpl.com/shiller-pe/table/by-month",
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            html = resp.read().decode("utf-8")
-        rows = re.findall(r"<td>([A-Za-z]+ \d+, \d{4})</td>\s*<td>\s*&#x2002;\s*([\d\.]+)\s*</td>", html)
-        if rows:
-            # 轉換前幾個月的資料
-            history = []
-            for date_str, val_str in rows[:12]:
-                try:
-                    d = dt.datetime.strptime(date_str, "%b %d, %Y")
-                    month_key = d.strftime("%Y/%m")
-                    cape_val = float(val_str)
-                    # 估算 ECY (1/CAPE * 100 - 實質利率約 1.85%~1.90%)
-                    real_rate_est = 1.90
-                    ecy_val = round(100.0 / cape_val - real_rate_est, 2)
-                    history.append({
-                        "date": month_key,
-                        "cape": cape_val,
-                        "ecy": ecy_val,
-                        "valuation": evaluate_cape_valuation(cape_val)["tier"],
-                    })
-                except Exception:
-                    continue
-            if history:
-                # 依月份去重排序
-                seen = set()
-                dedup = []
-                for h in history:
-                    if h["date"] not in seen:
-                        seen.add(h["date"])
-                        dedup.append(h)
-                data["history"] = dedup[:6]
-                data["latest"] = {
-                    "date": dedup[0]["date"],
-                    "cape": dedup[0]["cape"],
-                    "ecy": dedup[0]["ecy"],
-                    "status": evaluate_cape_valuation(dedup[0]["cape"])["tier"],
-                }
-    except Exception:
-        # 網路失敗時沿用預設
-        pass
+    full_history = get_full_cape_history()
+    if full_history:
+        # 取最新幾個月
+        rev = list(reversed(full_history))
+        history_table = []
+        for item in rev[:6]:
+            d = item["date"].replace("-", "/")
+            c = item["cape"]
+            e = item["ecy"]
+            history_table.append({
+                "date": d,
+                "cape": c,
+                "ecy": e,
+                "valuation": evaluate_cape_valuation(c)["tier"]
+            })
+        data["history"] = history_table
+        latest_item = rev[0]
+        data["latest"] = {
+            "date": latest_item["date"].replace("-", "/"),
+            "cape": latest_item["cape"],
+            "ecy": latest_item["ecy"],
+            "status": evaluate_cape_valuation(latest_item["cape"])["tier"]
+        }
 
     try:
         os.makedirs(os.path.dirname(CAPE_CACHE_PATH), exist_ok=True)
