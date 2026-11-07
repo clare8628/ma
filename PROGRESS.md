@@ -70,5 +70,15 @@
   - 完整策略架構與參數說明更新於 `docs/allocation-strategy.md`
   - 單元測試 63/63 通過（新增金額解析、金額快照儲存、前端 JS 語法驗證）
 
-測試覆蓋率：indicators / rules_engine / signals / rebalance / chart / backtest / allocation 七大模組皆有測試 (63/63 通過)。
+- [x] [宏觀估值層] 整合 S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY) 統計 (v1.7.1)
+  - 新增 `src/lrs/cape.py`：
+    - 取得並快取 CAPE 與 ECY 最新與近半年數據，提供極端高估/偏高/合理/便宜四級評價模型
+    - 內嵌玩股網 (WantGoo) 宏觀統計圖表與原始參考連結（`https://www.wantgoo.com/global/macroeconomics/cape`）
+  - 前端與報告整合：
+    - 於報告頁面新增「S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY)」卡片（位於 VIX 分析下方、三資產配置卡片上方）
+    - 提供指標數值、ECY 安全邊際評估、百年歷史分位位階警示、近半年數據清單與歷史全景走勢圖
+  - CLI 端：`main.py` 同步輸出最新 CAPE/ECY 與估值狀態
+  - 單元測試：新增 `tests/test_cape.py`（65/65 測試全數通過）
+
+測試覆蓋率：indicators / rules_engine / signals / rebalance / chart / backtest / allocation / cape 八大模組皆有測試 (65/65 通過)。
 部署狀態：本機可執行；支援 Cloudflare Workers Static Assets 與 GitHub Actions 排程。

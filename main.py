@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lrs import allocation, data, position_state, rebalance, signals  # noqa: E402
+from lrs import allocation, cape, data, position_state, rebalance, signals  # noqa: E402
 from lrs.chart import render_html_report  # noqa: E402
 from lrs.rules_engine import load_rules  # noqa: E402
 
@@ -108,6 +108,13 @@ def main() -> int:
     print(f"最新數值: {vix_close_str} — {vix_ctx.get('label', 'N/A')}")
     print(f"情緒評估: {vix_ctx.get('description', 'N/A')}")
     print(f"策略指引: {vix_ctx.get('guidance', 'N/A')}")
+
+    cape_data = cape.get_cape_statistics()
+    latest_cape = cape_data.get("latest", {})
+    print("\n=== S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY) ===")
+    print(f"最新月份: {latest_cape.get('date', 'N/A')} — CAPE: {latest_cape.get('cape', 'N/A')} | ECY: {latest_cape.get('ecy', 'N/A')}%")
+    print(f"估值位階: {latest_cape.get('status', 'N/A')}（百年歷史中位數約 16.0，平均約 17.5）")
+    print(f"統計來源: {cape_data.get('source_url', 'https://www.wantgoo.com/global/macroeconomics/cape')}")
 
     custom_actual = None
     custom_amounts = None

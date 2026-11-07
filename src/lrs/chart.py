@@ -19,7 +19,7 @@ import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import allocation
+from . import allocation, cape
 from .rules_engine import Rule, load_rules
 from .signals import DailyIndicators, Recommendation
 
@@ -864,6 +864,124 @@ def _render_vix_analysis_block(ind: DailyIndicators, recommendation: Recommendat
     """
 
 
+def _render_cape_block() -> str:
+    """繪製 S&P 500 席勒本益比 (CAPE) 與超額本益比報酬率 (ECY) 宏觀估值卡片。"""
+    cape_stats = cape.get_cape_statistics()
+    latest = cape_stats.get("latest", {})
+    history = cape_stats.get("history", [])
+    source_url = cape_stats.get("source_url", "https://www.wantgoo.com/global/macroeconomics/cape")
+    last_updated = cape_stats.get("last_updated", "最新")
+
+    cape_val = latest.get("cape", 40.71)
+    ecy_val = latest.get("ecy", 0.56)
+    eval_info = cape.evaluate_cape_valuation(cape_val)
+
+    # 讀取 public/shiller-cape.jpg 並轉為 base64 內嵌，確保全平台完全自包含
+    img_tag = ""
+    img_path = "public/shiller-cape.jpg"
+    if os.path.exists(img_path):
+        import base64
+        with open(img_path, "rb") as f:
+            b64_str = base64.b64encode(f.read()).decode("utf-8")
+        img_tag = f"""
+        <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#ffffff;">
+          <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:600;color:#475569;display:flex;justify-content:space-between;align-items:center;">
+            <span>📈 S&P 500 席勒本益比歷史走勢圖 (1880~2026 全歷史走勢，含CAPE/ECY/標普500)</span>
+            <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none;">前往玩股網原始圖表 ↗</a>
+          </div>
+          <div style="padding:10px;text-align:center;">
+            <img src="data:image/jpeg;base64,{b64_str}" alt="S&P 500 席勒本益比走勢圖" style="max-width:100%;height:auto;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.05);" />
+          </div>
+        </div>
+        """
+
+    # 歷史月份表格 rows
+    table_rows = []
+    for h in history:
+        table_rows.append(f"""
+        <tr>
+          <td style="font-weight:600;color:#1e293b;padding:8px 12px;border-bottom:1px solid #e2e8f0;">{h.get('date')}</td>
+          <td style="font-weight:700;color:#2563eb;padding:8px 12px;border-bottom:1px solid #e2e8f0;">{h.get('cape'):.2f}</td>
+          <td style="font-weight:700;color:#dc2626;padding:8px 12px;border-bottom:1px solid #e2e8f0;">{h.get('ecy'):.2f}%</td>
+          <td style="color:#64748b;padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;">{h.get('valuation', '歷史高檔')}</td>
+        </tr>
+        """)
+    rows_html = "".join(table_rows)
+
+    return f"""
+    <div class="card" id="cape-analysis-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h3 style="margin:0;font-size:18px;color:#0f172a;">S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY)</h3>
+          <span style="font-size:12px;color:#ffffff;background:{eval_info['badge_color']};padding:3px 8px;border-radius:10px;font-weight:600;">
+            當前估值：{eval_info['tier']}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:12px;color:#64748b;">資料日期：{latest.get('date')}</span>
+          <a href="{source_url}" target="_blank" rel="noopener noreferrer"
+             style="font-size:12px;color:#2563eb;background:#eff6ff;padding:4px 10px;border-radius:6px;border:1px solid #bfdbfe;text-decoration:none;font-weight:600;">
+            🔗 玩股網 WantGoo 統計來源 ↗
+          </a>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:16px;">
+        <!-- 當前指標速覽 -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;">最新席勒本益比 (CAPE)</div>
+          <div style="font-size:26px;font-weight:800;color:#2563eb;margin:4px 0;">{cape_val:.2f}</div>
+          <div style="font-size:12.5px;color:#475569;line-height:1.4;">
+            百年歷史中位數約 <b>16.0</b>，歷史平均約 <b>17.5</b>。目前處於百年歷史最高前 2% 區間（僅次於 2000 年網路泡沫頂峰 44.19）。
+          </div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:12px;color:#b91c1c;font-weight:600;">
+            ⚠️ 宏觀意涵：長期預期報酬率壓縮，中短線操作更須仰賴均線過濾與風控紀律保護。
+          </div>
+        </div>
+
+        <!-- 最新 ECY -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;">超額調整後本益比報酬率 (ECY)</div>
+          <div style="font-size:26px;font-weight:800;color:#dc2626;margin:4px 0;">{ecy_val:.2f}%</div>
+          <div style="font-size:12.5px;color:#475569;line-height:1.4;">
+            公式為 <code>(1 / CAPE) - 美國10年期實質公債殖利率</code>。代表股票實質獲利率相對於無風險公債之「超額報酬安全邊際」。
+          </div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:12px;color:#475569;">
+            💡 ECY 越低代表股市相對於公債越昂貴、溢價風險偏高；反之越高代表股市相對於債券更具吸引力。
+          </div>
+        </div>
+
+        <!-- 歷史月份統計清單 -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px;">近半年數據統計</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">
+            <thead>
+              <tr style="background:#e2e8f0;color:#475569;">
+                <th style="padding:4px 8px;">年度/月份</th>
+                <th style="padding:4px 8px;">CAPE</th>
+                <th style="padding:4px 8px;">ECY</th>
+                <th style="padding:4px 8px;">估值評估</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows_html}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 走勢圖內嵌 -->
+      {img_tag}
+
+      <!-- 指標與學理說明 -->
+      <div style="margin-top:14px;font-size:12.5px;color:#475569;background:#f8fafc;padding:12px 16px;border-radius:6px;border:1px solid #e2e8f0;line-height:1.6;">
+        <div><b>📘 指標說明</b>：席勒本益比（Shiller PE, PE10）= 股價 / 近10年平均實質EPS，經通膨與季節性調整，由 2013 年諾貝爾經濟學獎得主 Robert Shiller 教授提出，一般用於預估大盤實質中長期回報潛力，較不適用於短線擇時。</div>
+        <div style="margin-top:4px;"><b>📘 ECY 說明</b>：超額調整後本益比報酬率 ECY = (1/CAPE) - 美國實質10年債利率，同樣由席勒教授提出，進一步考量利率環境對股票估值的影響。ECY 代表股票相對於公債的實質超額報酬，ECY 越低表示股市相對高估。</div>
+      </div>
+    </div>
+    """
+
+
 def _render_allocation_block(check: "allocation.AllocationCheck", settings: Optional[dict]) -> str:
     """繪製現金/QQQ/TQQQ三資產配置卡片（財富種植園策略，含可互動即時輸入與試算面板）。"""
     target = check.target
@@ -1110,6 +1228,7 @@ def render_html_report(
     alloc_amounts = alloc_check.amounts or {"cash": 0.0, "qqq": 0.0, "tqqq": 0.0, "total": 0.0}
     alloc_threshold = (settings or {}).get("allocation", {}).get("drift_threshold_pct", 5)
     allocation_html = _render_allocation_block(alloc_check, settings)
+    cape_block_html = _render_cape_block()
     events_table_html = _render_events_table(events, ind.dates)
 
     rules_html = "".join(
@@ -2553,7 +2672,10 @@ if (document.readyState === 'loading') {{
   <!-- 4. VIX 恐慌指數綜合判斷與歷史抄底勝率分析 -->
   {vix_analysis_html}
 
-  <!-- 4.5 現金/QQQ/TQQQ 三資產配置（簡化版） -->
+  <!-- 4.2 S&P 500 席勒本益比 (CAPE) 與超額報酬率 (ECY) 宏觀估值分析 -->
+  {cape_block_html}
+
+  <!-- 4.5 現金/QQQ/TQQQ 三資產配置（財富種植園策略） -->
   {allocation_html}
 
   <!-- 5. 價格與均線區塊 -->
