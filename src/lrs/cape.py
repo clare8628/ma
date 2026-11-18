@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 
 CAPE_CACHE_PATH = "state/cache/cape_stats.json"
 CAPE_FULL_HISTORY_PATH = "state/cache/cape_history_full.json"
+CAPE_STATIC_DATA_PATH = "data/cape_history_full.json"
 
 # NBER 歷史經濟衰退期 (起, 訖)
 NBER_RECESSIONS = [
@@ -95,12 +96,15 @@ def evaluate_cape_valuation(cape: float) -> Dict[str, str]:
 
 def get_full_cape_history() -> List[Dict[str, Any]]:
     """讀取全歷史數據點 (date, cape, ecy, sp500) 供前端向量圖形繪製。"""
-    if os.path.exists(CAPE_FULL_HISTORY_PATH):
-        try:
-            with open(CAPE_FULL_HISTORY_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    for path in (CAPE_FULL_HISTORY_PATH, CAPE_STATIC_DATA_PATH):
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data:
+                        return data
+            except Exception:
+                pass
     # 預設至少提供近 20 年簡化點
     return [
         {"date": h["date"].replace("/", "-"), "cape": h["cape"], "ecy": h["ecy"], "sp500": 5800.0}
